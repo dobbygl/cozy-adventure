@@ -333,8 +333,11 @@ export class Environment {
     console.log(`Tree collider created at (${treeCollider.position.x.toFixed(1)}, ${treeCollider.position.y.toFixed(1)}, ${treeCollider.position.z.toFixed(1)})`);
   }
   createWater() {
-    // Create massive water plane that extends far beyond the island
-    const waterGeometry = new THREE.PlaneGeometry(800, 800, 128, 128);
+    // Create massive water plane that extends far beyond the island.
+    // 64x64 segments (~4k verts) instead of 128x128 (~16k): the per-frame wave
+    // loop and computeVertexNormals cost scale with vertex count, and the long
+    // wavelengths still sample fine at this resolution.
+    const waterGeometry = new THREE.PlaneGeometry(800, 800, 64, 64);
     
     // Create realistic water material with blue-green ocean color
     const waterMaterial = new THREE.MeshLambertMaterial({ 
