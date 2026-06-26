@@ -1,3 +1,5 @@
+import { ItemStack } from './inventory.js';
+
 export class SaveSystem {
   constructor(gameInstance) {
     this.gameInstance = gameInstance;
@@ -653,8 +655,7 @@ export class SaveSystem {
           try {
             const index = parseInt(slotIndex);
             if (index >= 0 && index < inventory.backpack.length) {
-              // Use the ItemStack class from inventory.js
-              const ItemStack = (await import('./inventory.js')).ItemStack;
+              // ItemStack is imported statically at the top of this file.
               inventory.backpack[index] = new ItemStack(item, slotData.quantity);
               console.log(`Restored ${slotData.quantity} ${item.name} to backpack slot ${index}`);
             }
@@ -681,8 +682,7 @@ export class SaveSystem {
           try {
             const index = parseInt(slotIndex);
             if (index >= 0 && index < inventory.hotbar.length) {
-              // Use the ItemStack class from inventory.js
-              const ItemStack = (await import('./inventory.js')).ItemStack;
+              // ItemStack is imported statically at the top of this file.
               inventory.hotbar[index] = new ItemStack(item, slotData.quantity);
               console.log(`Restored ${slotData.quantity} ${item.name} to hotbar slot ${index}`);
             }
