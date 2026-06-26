@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      # lint runs in warn mode (informational; does not fail the build yet).
+      - run: npm run lint
+      # typecheck, test and build are hard gates.
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
