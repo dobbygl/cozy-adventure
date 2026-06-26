@@ -1,4 +1,18 @@
+// @ts-check
 import * as THREE from 'three';
+
+/**
+ * @typedef {Object} SerializedItemStack
+ * @property {string} itemId
+ * @property {number} quantity
+ */
+
+/**
+ * @typedef {Object} SerializedInventory
+ * @property {(SerializedItemStack | null)[]} hotbar
+ * @property {(SerializedItemStack | null)[]} backpack
+ * @property {number} selectedHotbarSlot
+ */
 
 /**
  * Item class - represents individual inventory items
@@ -67,8 +81,11 @@ export class Inventory {
     this.selectedHotbarSlot = 0;
     
     // Event callbacks
+    /** @type {null | (() => void)} */
     this.onInventoryChange = null;
+    /** @type {null | ((slotIndex: number, item: ItemStack | null) => void)} */
     this.onHotbarSelectionChange = null;
+    /** @type {null | ((item: Item, added: number, total: number) => void)} */
     this.onItemAdded = null;
   }
 
@@ -291,6 +308,7 @@ export class Inventory {
 
   /**
    * Serialize inventory for saving
+   * @returns {SerializedInventory}
    */
   serialize() {
     return {
@@ -308,6 +326,8 @@ export class Inventory {
 
   /**
    * Deserialize inventory from saved data
+   * @param {SerializedInventory} data
+   * @param {Record<string, Item>} itemRegistry
    */
   deserialize(data, itemRegistry) {
     // Clear current inventory
