@@ -310,7 +310,9 @@ export class Environment {
       depthWrite: false // Don't write to depth buffer
     });
     const treeCollider = new THREE.Mesh(treeColliderGeometry, treeColliderMaterial);
-    
+    // Collider is for hit-testing only; never render it (saves ~1 draw call per tree).
+    treeCollider.visible = false;
+
     // Position collider slightly lower and closer to actual trunk base
     treeCollider.position.copy(treeData.mesh.position);
     treeCollider.position.y = treeData.position.y + (trunkHeight * 0.3); // Lower position

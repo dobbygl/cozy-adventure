@@ -104,22 +104,18 @@ async load() {
     });
   }
   async loadFBXAnimations() {
-    // Load idle animation
+    // Load idle first so the character can stand as soon as possible.
     await this.loadFBXAnimation('assets/Player_Idle.fbx', 'Player_Idle');
-    // Load walking animation
-    await this.loadFBXAnimation('assets/Player_Walking.fbx', 'Player_Walking');
-    // Load walking right animation
-    await this.loadFBXAnimation('assets/Player_Walking_Right.fbx', 'Player_Walking_Right');
-    // Load walking left animation
-    await this.loadFBXAnimation('assets/Player_Walking_Left.fbx', 'Player_Walking_Left');
-    // Load running animation
-    await this.loadFBXAnimation('assets/Player_Run.fbx', 'Player_Run');
-    // Load running right animation
-    await this.loadFBXAnimation('assets/Player_Run_Right.fbx', 'Player_Run_Right');
-    // Load running left animation
-    await this.loadFBXAnimation('assets/Player_Run_Left.fbx', 'Player_Run_Left');
-    // Load axe hit animation
-    await this.loadFBXAnimation('assets/Item_Player_Axe_Hit.fbx', 'Player_Axe_Hit');
+    // Load the remaining clips in parallel (FBX parsing is the slow part of startup).
+    await Promise.all([
+      this.loadFBXAnimation('assets/Player_Walking.fbx', 'Player_Walking'),
+      this.loadFBXAnimation('assets/Player_Walking_Right.fbx', 'Player_Walking_Right'),
+      this.loadFBXAnimation('assets/Player_Walking_Left.fbx', 'Player_Walking_Left'),
+      this.loadFBXAnimation('assets/Player_Run.fbx', 'Player_Run'),
+      this.loadFBXAnimation('assets/Player_Run_Right.fbx', 'Player_Run_Right'),
+      this.loadFBXAnimation('assets/Player_Run_Left.fbx', 'Player_Run_Left'),
+      this.loadFBXAnimation('assets/Item_Player_Axe_Hit.fbx', 'Player_Axe_Hit'),
+    ]);
   }
   async loadFBXAnimation(url, animationName) {
     return new Promise((resolve, reject) => {
