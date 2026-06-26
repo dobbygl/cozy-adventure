@@ -51,6 +51,7 @@ export class Game {
     // Main menu system
     this.mainMenu = null;
     this.isGameStarted = false;
+    this.isPaused = false;
     
     // Save system
     this.saveSystem = null;
@@ -244,7 +245,11 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
     
-    document.getElementById('gameContainer').appendChild(this.renderer.domElement);
+    const gameContainer = document.getElementById('gameContainer');
+    if (!gameContainer) {
+      throw new Error('Cannot start game: #gameContainer element not found in the DOM');
+    }
+    gameContainer.appendChild(this.renderer.domElement);
   }
 
   initializeControllers() {
@@ -538,12 +543,13 @@ addSampleItemsToInventory() {
   }
   
   update() {
-    // Only update game systems if the game has been started
-    if (!this.isGameStarted) {
+    // Only update game systems if the game has been started and is not paused
+    if (!this.isGameStarted || this.isPaused) {
       return;
     }
-    
-    const deltaTime = this.clock.getDelta();
+
+    // Clamp delta so a stall (tab hidden, GC, breakpoint) can't fling the physics.
+    const deltaTime = Math.min(this.clock.getDelta(), 0.1);
     
     if (this.characterController) {
       // Update character controller
@@ -597,6 +603,26 @@ addSampleItemsToInventory() {
       this.renderer.render(this.scene, this.camera);
     }
   }
+
+  pause() {
+    // Called on tab-hide (see main.js) and by any in-game pause.
+    if (!this.isGameStarted || this.isPaused) return;
+    this.isPaused = true;
+    this.clock.stop(); // freeze elapsed time so deltaTime doesn't jump on resume
+    if (this.environment && this.environment.pauseWaves) {
+      this.environment.pauseWaves();
+    }
+  }
+
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.clock.start(); // restart the clock; next getDelta() is small, no jump
+    if (this.environment && this.environment.resumeWaves) {
+      this.environment.resumeWaves();
+    }
+  }
+
   destroy() {
     // Clean up save system
     if (this.saveSystem) {

@@ -39,7 +39,7 @@ this.createBackpack();
   createStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Fredoka+One:wght@400&family=Nunito:wght@400;600;700&display=swap');
+      @import url('/assets/external/fonts.googleapis.com/css2__qs_family_Fredoka_One_wght_400_family_Nunito_wght_400_600_700_display_swap.css');
       
       .inventory-ui {
         font-family: 'Nunito', sans-serif;

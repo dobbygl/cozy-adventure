@@ -214,10 +214,10 @@ export class DebugUI {
       playerMesh = this.game.player.mesh;
     } else if (this.game.player) {
       playerMesh = this.game.player;
-    } else if (window.game?.player?.mesh) {
-      playerMesh = window.game.player.mesh;
-    } else if (window.game?.player) {
-      playerMesh = window.game.player;
+    } else if (window.gameInstance?.player?.mesh) {
+      playerMesh = window.gameInstance.player.mesh;
+    } else if (window.gameInstance?.player) {
+      playerMesh = window.gameInstance.player;
     }
     
     if (!playerMesh) return;
@@ -229,10 +229,10 @@ export class DebugUI {
       stepHeight = this.game.player.characterController.stepHeight || 0.5;
     } else if (this.game.characterController) {
       stepHeight = this.game.characterController.stepHeight || 0.5;
-    } else if (window.game?.player?.characterController) {
-      stepHeight = window.game.player.characterController.stepHeight || 0.5;
-    } else if (window.game?.characterController) {
-      stepHeight = window.game.characterController.stepHeight || 0.5;
+    } else if (window.gameInstance?.player?.characterController) {
+      stepHeight = window.gameInstance.player.characterController.stepHeight || 0.5;
+    } else if (window.gameInstance?.characterController) {
+      stepHeight = window.gameInstance.characterController.stepHeight || 0.5;
     }
     
     // Create step height indicator cylinder
@@ -278,10 +278,10 @@ export class DebugUI {
         playerMesh = this.game.player.mesh;
       } else if (this.game.player) {
         playerMesh = this.game.player;
-      } else if (window.game?.player?.mesh) {
-        playerMesh = window.game.player.mesh;
-      } else if (window.game?.player) {
-        playerMesh = window.game.player;
+      } else if (window.gameInstance?.player?.mesh) {
+        playerMesh = window.gameInstance.player.mesh;
+      } else if (window.gameInstance?.player) {
+        playerMesh = window.gameInstance.player;
       }
       
       if (playerMesh) {
@@ -293,10 +293,10 @@ export class DebugUI {
           stepHeight = this.game.player.characterController.stepHeight || 0.5;
         } else if (this.game.characterController) {
           stepHeight = this.game.characterController.stepHeight || 0.5;
-        } else if (window.game?.player?.characterController) {
-          stepHeight = window.game.player.characterController.stepHeight || 0.5;
-        } else if (window.game?.characterController) {
-          stepHeight = window.game.characterController.stepHeight || 0.5;
+        } else if (window.gameInstance?.player?.characterController) {
+          stepHeight = window.gameInstance.player.characterController.stepHeight || 0.5;
+        } else if (window.gameInstance?.characterController) {
+          stepHeight = window.gameInstance.characterController.stepHeight || 0.5;
         }
         
         this.stepVisualMesh.position.y += stepHeight / 2;

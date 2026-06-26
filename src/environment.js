@@ -368,6 +368,8 @@ export class Environment {
     this.waterMesh = waterMesh;
     this.waveTime = 0;
     this.waveSpeed = 0.008;
+    this.wavesPaused = false;
+    this.waveAnimationId = null;
     
     // Store original vertex positions for wave calculations
     const geometry = waterMesh.geometry;
@@ -380,7 +382,12 @@ export class Environment {
   startWaveAnimation() {
     const animateOceanWaves = () => {
       if (!this.waterMesh) return;
-      
+      // While paused, stay subscribed but skip the expensive 16k-vertex recompute.
+      if (this.wavesPaused) {
+        this.waveAnimationId = requestAnimationFrame(animateOceanWaves);
+        return;
+      }
+
       this.waveTime += this.waveSpeed;
       
       const positions = this.waterMesh.geometry.attributes.position;
@@ -415,10 +422,18 @@ export class Environment {
       this.waterMesh.geometry.computeVertexNormals();
       
       // Continue animation
-      requestAnimationFrame(animateOceanWaves);
+      this.waveAnimationId = requestAnimationFrame(animateOceanWaves);
     };
-    
+
     // Start the animation
-    animateOceanWaves();
+    this.waveAnimationId = requestAnimationFrame(animateOceanWaves);
+  }
+
+  pauseWaves() {
+    this.wavesPaused = true;
+  }
+
+  resumeWaves() {
+    this.wavesPaused = false;
   }
 }
