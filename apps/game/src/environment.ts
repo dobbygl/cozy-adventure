@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { createWorldRng, toNumericSeed, type Rng } from '@cozy/shared';
+import { treeNetworkIdOffsets, treeNetworkId } from './net/treeIds.js';
 import type { CollisionSystem } from './CollisionSystem.js';
 
 /** A placed tree instance and where it sits. */
@@ -19,6 +20,8 @@ export class Environment {
   /** Stable ids ("typeIndex-instanceIndex") of trees chopped down; excluded on (re)generation. */
   choppedTreeIds: Set<string>;
   rng: Rng;
+  /** Cumulative base offsets per tree type, so a tree's networkId = offset[type] + instance. */
+  treeIdOffsets: number[] = [];
   treePositions!: { x: number; z: number; scale: number }[];
   loadedTrees!: TreeData[];
   waterMesh!: THREE.Mesh;
@@ -194,6 +197,10 @@ export class Environment {
       { url: 'assets/env_tree.glb', scale: 7.5, count: 11 },
       { url: 'assets/env_apple_tree3.glb', scale: 5.9, count: 9 }
     ];
+    // Deterministic networkId space for the seeded base trees (Principle II): a
+    // tree's id is offset[type] + instanceIndex, stable across clients/reloads and
+    // provably below the server's dynamic-id base.
+    this.treeIdOffsets = treeNetworkIdOffsets(treeAssets.map((t) => t.count));
     console.log('Starting tree loading process...');
     // Load all tree types and wait for them to complete
     for (const [typeIndex, treeConfig] of treeAssets.entries()) {
@@ -313,6 +320,9 @@ export class Environment {
       
       // Stable, deterministic id so a chopped tree can be excluded on reload.
       treeClone.userData.treeId = `${typeIndex}-${instanceIndex}`;
+      // Stable numeric networkId (Principle II): the identity used on the wire for
+      // chop_tree, agreed by every client from the seed. Never mesh.uuid.
+      treeClone.userData.networkId = treeNetworkId(this.treeIdOffsets, typeIndex, instanceIndex);
 
       // Add tree to scene
       this.scene.add(treeClone);

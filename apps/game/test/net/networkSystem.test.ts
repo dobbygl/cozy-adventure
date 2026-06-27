@@ -64,6 +64,28 @@ describe('client NetworkSystem against an in-process @cozy/server', () => {
     expect(aSnap?.heldItemId).toBe('axe');
   });
 
+  it('announces peer join and leave to an existing client', async () => {
+    ctx = await startTestServer();
+    const joins: string[] = [];
+    const leaves: string[] = [];
+    const a = new NetworkSystem(
+      { url: ctx.url, displayName: 'A' },
+      { onPeerJoined: (p) => joins.push(p.playerId), onPeerLeft: (id) => leaves.push(id) }
+    );
+    nets.push(a);
+    await a.connect();
+
+    const b = new NetworkSystem({ url: ctx.url, displayName: 'B' });
+    nets.push(b);
+    const jb = await b.connect();
+    await sleep(150);
+    expect(joins).toContain(jb.playerId); // A saw B join
+
+    b.destroy();
+    await sleep(150);
+    expect(leaves).toContain(jb.playerId); // A saw B leave
+  });
+
   it('rejects an unreachable server URL with a clear error', async () => {
     const net = new NetworkSystem({ url: 'ws://127.0.0.1:1/nope' });
     nets.push(net);
