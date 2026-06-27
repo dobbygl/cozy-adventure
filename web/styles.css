@@ -47,7 +47,9 @@ body {
 
 a { color: var(--ocean-deep); }
 
-img { max-width: 100%; display: block; }
+/* height:auto keeps aspect ratio for width-constrained imgs (e.g. width:100%);
+   without it, an img with width+height attributes renders at the raw height. */
+img { max-width: 100%; height: auto; display: block; }
 
 :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
 
