@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>render</title>
+  <style>
+    html, body { margin: 0; background: transparent; }
+    #c { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script type="module">
+    // Render a single game model to a transparent canvas, for use as a reference
+    // image. Driven headless by scripts/render-models.mjs.
+    //   ?model=dog_001.glb&size=1024[&yaw=0.6&pitch=0.45]
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const q = new URLSearchParams(location.search);
+    const model = q.get('model');
+    const size = parseInt(q.get('size') || '1024', 10);
+    const yaw = parseFloat(q.get('yaw') || '0.6');   // horizontal angle
+    const pitch = parseFloat(q.get('pitch') || '0.42'); // elevation
+
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(1);
+    renderer.setSize(size, size);
+    renderer.setClearColor(0x000000, 0); // transparent
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    // Warm, soft lighting close to the game's look.
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8fae86, 1.15));
+    const key = new THREE.DirectionalLight(0xfff3df, 1.5);
+    key.position.set(4, 7, 5);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xcfe8ff, 0.5);
+    fill.position.set(-5, 2, -3);
+    scene.add(fill);
+
+    const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 5000);
+
+    new GLTFLoader().load(
+      '/assets/' + model,
+      (gltf) => {
+        const obj = gltf.scene;
+        const box = new THREE.Box3().setFromObject(obj);
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        obj.position.sub(sphere.center); // center at origin
+        scene.add(obj);
+
+        const r = sphere.radius || 1;
+        const dist = (r / Math.sin((cam.fov * Math.PI) / 180 / 2)) * 1.12;
+        cam.position.set(
+          dist * Math.cos(pitch) * Math.sin(yaw),
+          dist * Math.sin(pitch),
+          dist * Math.cos(pitch) * Math.cos(yaw)
+        );
+        cam.lookAt(0, 0, 0);
+
+        // Keep re-rendering so a headless capture always finds fresh pixels.
+        (function loop() {
+          renderer.render(scene, cam);
+          requestAnimationFrame(loop);
+        })();
+        window.__rendered = true;
+        document.title = 'RENDERED';
+      },
+      undefined,
+      (err) => {
+        window.__rendered = 'error';
+        document.title = 'ERROR ' + (err && err.message ? err.message : err);
+      }
+    );
+  </script>
+</body>
+</html>
