@@ -3,16 +3,17 @@ import { logger } from './log';
 import { Metrics } from './metrics';
 import { WebSocketTransport } from './transport/WebSocketTransport';
 import { MemoryStore } from './persistence/MemoryStore';
+import { PostgresStore } from './persistence/PostgresStore';
 import type { Store } from './persistence/Store';
 import { SessionManager } from './session/SessionManager';
 import { GameServer } from './server';
 
 function createStore(databaseUrl: string | null): Store {
-  // PostgresStore is wired in US2 (T047); until then (or with no DATABASE_URL)
-  // the in-memory store runs the world.
   if (databaseUrl) {
-    logger.warn('DATABASE_URL set but PostgresStore not yet wired; using in-memory store');
+    logger.info('using PostgreSQL store');
+    return new PostgresStore(databaseUrl);
   }
+  logger.info('no DATABASE_URL set; using in-memory store (dev/test, non-durable)');
   return new MemoryStore();
 }
 

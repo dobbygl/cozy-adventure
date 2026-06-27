@@ -16,6 +16,16 @@ import type {
 /** Bumped on any breaking change to the message shapes. Sent in `join`. */
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * Wire-contract id-space split. Base world entities (the seeded trees) are
+ * identified by their deterministic generation INDEX, which both client and
+ * server derive identically and which lives BELOW this base. The server
+ * allocates networkIds for dynamic entities (buildings, drops, dogs) AT or ABOVE
+ * this base, so the two id spaces are provably disjoint and never collide.
+ * The client (spec 003) MUST keep base-tree indices below this value.
+ */
+export const DYNAMIC_NETWORK_ID_BASE = 1_000_000;
+
 // ---------------------------------------------------------------------------
 // World commands (discrete mutations requested by a client)
 // ---------------------------------------------------------------------------

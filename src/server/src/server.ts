@@ -13,6 +13,8 @@ import { NullAuthProvider } from './auth/NullAuthProvider';
 import { PasswordAuthProvider } from './auth/PasswordAuthProvider';
 import { createDefaultPlayer } from './player';
 import { validateAvatarMove } from './session/avatarRelay';
+import { applyCommand } from './world/commands';
+import { runDogPickups, type DogPlayer } from './world/dog';
 import { PROTOCOL_VERSION } from '@cozy/shared';
 import type {
   ClientMessage,
@@ -20,8 +22,10 @@ import type {
   ErrorCode,
   JoinMessage,
   AvatarStateMessage,
+  CommandMessage,
   AvatarSnapshot,
   PeerInfo,
+  PlayerState,
 } from '@cozy/shared';
 
 export interface GameServerDeps {
@@ -48,9 +52,12 @@ export class GameServer {
   private readonly auth: AuthProvider;
 
   private world: World | null = null;
+  /** Live, mutable per-player state for connected players (persisted on save/leave). */
+  private readonly players = new Map<string, PlayerState>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt = 0;
   private msSinceWorldTime = 0;
+  private msSinceSave = 0;
 
   constructor(deps: GameServerDeps) {
     this.config = deps.config;
@@ -102,6 +109,8 @@ export class GameServer {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    // Graceful shutdown persists the current world + player state.
+    await this.persistAll();
     await this.transport.stop();
     await this.store.close();
     this.logger.info('server stopped');
@@ -119,8 +128,27 @@ export class GameServer {
     this.msSinceWorldTime += delta;
     if (this.msSinceWorldTime >= 1000) {
       this.broadcastWorldTime();
+      this.runDog();
       this.msSinceWorldTime = 0;
     }
+    this.msSinceSave += delta;
+    if (this.msSinceSave >= this.config.saveIntervalMs) {
+      this.msSinceSave = 0;
+      void this.persistAll();
+    }
+  }
+
+  private runDog(): void {
+    if (!this.world) return;
+    const dogPlayers: DogPlayer[] = [];
+    for (const s of this.sessions.activeSessions()) {
+      if (!s.playerId) continue;
+      const p = this.players.get(s.playerId);
+      if (!p) continue;
+      dogPlayers.push({ playerId: s.playerId, position: s.avatar?.position ?? null, inventory: p.inventory });
+    }
+    const produced = runDogPickups(this.world, dogPlayers, this.world.gameTime);
+    for (const diff of produced) this.broadcast({ t: 'event', diff });
   }
 
   private relayAvatars(now: number): void {
@@ -192,8 +220,34 @@ export class GameServer {
         this.onAvatarState(session, msg);
         break;
       case 'command':
-        // Implemented in US2 (authoritative world).
+        this.onCommand(session, msg);
         break;
+    }
+  }
+
+  private onCommand(session: Session, msg: CommandMessage): void {
+    if (session.state !== 'active' || !session.playerId || !this.world) return;
+    // Idempotency: a command replayed with a non-increasing seq is a duplicate
+    // (e.g. resent on reconnect) and must not be applied twice.
+    if (msg.seq <= session.lastSeq) return;
+    session.lastSeq = msg.seq;
+
+    const player = this.players.get(session.playerId);
+    if (!player) return;
+
+    const outcome = applyCommand(
+      { world: this.world, player, playerPosition: session.avatar?.position ?? null },
+      msg.cmd,
+      this.world.gameTime
+    );
+
+    if (outcome.ok) {
+      // Apply-on-confirm (v1): broadcast the authoritative event to everyone,
+      // including the emitter.
+      this.broadcast({ t: 'event', diff: outcome.diff });
+    } else {
+      session.send({ t: 'command_rejected', seq: msg.seq, reason: outcome.reason });
+      this.metrics.incMessagesOut();
     }
   }
 
@@ -221,11 +275,17 @@ export class GameServer {
     }
 
     const playerId = msg.playerId ?? randomUUID();
-    const player = (await this.store.loadPlayer(playerId)) ?? createDefaultPlayer(playerId, msg.displayName, msg.modelId);
+    // Reuse the live state if this player is already tracked (e.g. quick rejoin);
+    // otherwise load from the store or start fresh.
+    let player = this.players.get(playerId);
+    if (!player) {
+      player = (await this.store.loadPlayer(playerId)) ?? createDefaultPlayer(playerId, msg.displayName, msg.modelId);
+    }
 
     // The connection may have dropped during the await.
     if (this.sessions.getByConnection(session.conn.id) !== session) return;
 
+    this.players.set(playerId, player);
     session.state = 'active';
     session.info = { playerId, displayName: player.displayName, modelId: player.modelId };
     this.sessions.bindPlayer(session, playerId);
@@ -288,10 +348,49 @@ export class GameServer {
     const session = this.sessions.remove(conn.id);
     if (session && session.playerId && session.state === 'active') {
       session.state = 'closed';
-      this.broadcast({ t: 'peer_left', playerId: session.playerId });
-      this.logger.info({ playerId: session.playerId }, 'player disconnected');
+      const playerId = session.playerId;
+      this.broadcast({ t: 'peer_left', playerId });
+      // Persist the leaving player's progress, then stop tracking them; if the
+      // world just emptied, persist it too (FR-022).
+      const worldEmptied = this.sessions.activeCount() === 0;
+      void this.persistPlayer(playerId).finally(() => this.players.delete(playerId));
+      if (worldEmptied) void this.persistWorld();
+      this.logger.info({ playerId }, 'player disconnected');
     }
     this.metrics.setConnectedPlayers(this.sessions.activeCount());
+  }
+
+  // --- persistence ---
+
+  private async persistWorld(): Promise<void> {
+    if (!this.world) return;
+    try {
+      await this.store.saveWorld(this.world.toDocument());
+      this.metrics.setPersistenceHealthy(true);
+    } catch (err) {
+      this.logger.error({ err }, 'failed to persist world; keeping in memory, will retry');
+      this.metrics.setPersistenceHealthy(false);
+    }
+  }
+
+  private async persistPlayer(playerId: string): Promise<void> {
+    if (!this.world) return;
+    const player = this.players.get(playerId);
+    if (!player) return;
+    try {
+      await this.store.savePlayer(this.world.worldId, player);
+      this.metrics.setPersistenceHealthy(true);
+    } catch (err) {
+      this.logger.error({ err, playerId }, 'failed to persist player; will retry');
+      this.metrics.setPersistenceHealthy(false);
+    }
+  }
+
+  private async persistAll(): Promise<void> {
+    await this.persistWorld();
+    for (const playerId of this.players.keys()) {
+      await this.persistPlayer(playerId);
+    }
   }
 
   // --- helpers ---

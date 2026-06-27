@@ -1,0 +1,79 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { startTestServer, type TestServer } from '../harness/startTestServer';
+import { joinClient } from '../harness/joinClient';
+
+describe('P2 command validation (rejection without mutation)', () => {
+  let ctx: TestServer | undefined;
+
+  afterEach(async () => {
+    await ctx?.server.stop();
+    ctx = undefined;
+  });
+
+  it('rejects pickup of a non-existent drop', async () => {
+    ctx = await startTestServer();
+    const { c } = await joinClient(ctx.url);
+    c.send({ t: 'command', seq: 1, cmd: { type: 'pickup_drop', networkId: 9_999_999 } });
+    const rej = await c.waitFor('command_rejected');
+    expect(rej.reason).toBe('already_consumed');
+    c.close();
+  });
+
+  it('rejects acting out of range', async () => {
+    ctx = await startTestServer();
+    const { c: dropper } = await joinClient(ctx.url);
+    const { c: far } = await joinClient(ctx.url);
+    await dropper.waitFor('peer_joined');
+
+    // dropper gains wood and drops it at the origin (no position reported -> no range check).
+    dropper.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 1 } });
+    await dropper.waitFor('event');
+    dropper.send({ t: 'command', seq: 2, cmd: { type: 'drop_item', itemId: 'wood', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
+    const spawn = await dropper.waitFor('event');
+    const networkId = spawn.diff.type === 'drop_spawned' ? spawn.diff.entity.networkId : -1;
+
+    // far's FIRST avatar_state may be anywhere (sanity only checks deltas). Place it
+    // far away, then try to grab the origin drop. WS messages are ordered, so the
+    // server sees the position before the command.
+    far.send({ t: 'avatar_state', position: { x: 50, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, movement: 'idle', heldItemId: null });
+    far.send({ t: 'command', seq: 1, cmd: { type: 'pickup_drop', networkId } });
+    const rej = await far.waitFor('command_rejected');
+    expect(rej.reason).toBe('out_of_range');
+    dropper.close();
+    far.close();
+  });
+
+  it('rejects building in an occupied cell', async () => {
+    ctx = await startTestServer();
+    const { c } = await joinClient(ctx.url);
+    const cell = { level: 0, gx: 1, gz: 1 };
+    const build = (seq: number) => ({
+      t: 'command' as const,
+      seq,
+      cmd: {
+        type: 'place_building' as const,
+        registryType: 'wall',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        level: 0,
+        cell,
+      },
+    });
+    c.send(build(1));
+    const ev = await c.waitFor('event');
+    expect(ev.diff.type).toBe('building_placed');
+    c.send(build(2));
+    const rej = await c.waitFor('command_rejected');
+    expect(rej.reason).toBe('cell_occupied');
+    c.close();
+  });
+
+  it('rejects dropping an item the player does not have', async () => {
+    ctx = await startTestServer();
+    const { c } = await joinClient(ctx.url);
+    c.send({ t: 'command', seq: 1, cmd: { type: 'drop_item', itemId: 'diamond', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
+    const rej = await c.waitFor('command_rejected');
+    expect(rej.reason).toBe('invalid');
+    c.close();
+  });
+});
