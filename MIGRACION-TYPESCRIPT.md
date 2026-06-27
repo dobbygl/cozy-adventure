@@ -99,7 +99,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/DogCompanion.js`
 
 ### Ola 5 — Sistemas compuestos
-- [ ] `src/BuildingIntegrationSystem.js` (depende de FarmingSystem ✓)
+- [x] `src/BuildingIntegrationSystem.js` (depende de FarmingSystem ✓)
 - [ ] `src/BuildingSystem.js` (archivo más grande, 2356 líneas; sus 5 deps ya en .ts; iteración propia)
 - [ ] `src/environment.js` (depende de `shared/rng` ✓)
 

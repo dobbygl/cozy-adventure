@@ -1,8 +1,26 @@
 import * as THREE from 'three';
 import { FarmingSystem } from './FarmingSystem.js';
+import type { Inventory, Item } from './inventory.js';
+import type { CollisionSystem } from './CollisionSystem.js';
 
 export class BuildingIntegrationSystem {
-  constructor(scene, player, inventory, collisionSystem, itemRegistry) {
+  scene: THREE.Scene;
+  player: any;
+  inventory: Inventory;
+  collisionSystem: CollisionSystem;
+  itemRegistry: Record<string, Item>;
+  integrations: Map<string, any>;
+  activeBuildingInstances: Map<string, any>;
+  eventListeners: Map<string, any>;
+  farmingSystem: FarmingSystem;
+
+  constructor(
+    scene: THREE.Scene,
+    player: any,
+    inventory: Inventory,
+    collisionSystem: CollisionSystem,
+    itemRegistry: Record<string, Item>
+  ) {
     this.scene = scene;
     this.player = player;
     this.inventory = inventory;
@@ -32,7 +50,7 @@ export class BuildingIntegrationSystem {
    * @param {string} buildingType - The building type (e.g., 'farmingPlot', 'wall', 'workbench')
    * @param {Object} integrationConfig - Configuration object
    */
-  registerIntegration(buildingType, integrationConfig) {
+  registerIntegration(buildingType: string, integrationConfig: any): void {
     const config = {
       // Script class constructor
       scriptClass: integrationConfig.scriptClass,
@@ -84,7 +102,12 @@ export class BuildingIntegrationSystem {
    * @param {THREE.Vector3} position - World position
    * @param {number} rotation - Y rotation in radians
    */
-  activateBuilding(buildingType, buildingMesh, position, rotation = 0) {
+  activateBuilding(
+    buildingType: string,
+    buildingMesh: THREE.Object3D,
+    position: THREE.Vector3,
+    rotation = 0
+  ): any {
     const integration = this.integrations.get(buildingType);
     if (!integration) {
       console.warn(`No integration found for building type: ${buildingType}`);
@@ -156,7 +179,7 @@ export class BuildingIntegrationSystem {
    * Deactivate a building instance when removed
    * @param {string} instanceId - The instance ID
    */
-  deactivateBuilding(instanceId) {
+  deactivateBuilding(instanceId: string): void {
     const buildingInstance = this.activeBuildingInstances.get(instanceId);
     if (!buildingInstance) {
       console.warn(`Building instance not found: ${instanceId}`);
@@ -192,7 +215,7 @@ export class BuildingIntegrationSystem {
    * @param {THREE.Object3D} mesh - The building mesh
    * @returns {Object|null} Building instance or null
    */
-  getBuildingInstanceByMesh(mesh) {
+  getBuildingInstanceByMesh(mesh: THREE.Object3D): any {
     const instanceId = mesh.userData.buildingInstanceId;
     if (!instanceId) return null;
     
@@ -204,7 +227,7 @@ export class BuildingIntegrationSystem {
    * @param {string} buildingType - The building type
    * @returns {Array} Array of building instances
    */
-  getBuildingInstancesByType(buildingType) {
+  getBuildingInstancesByType(buildingType: string): any[] {
     return Array.from(this.activeBuildingInstances.values())
       .filter(instance => instance.type === buildingType);
   }
@@ -213,7 +236,7 @@ export class BuildingIntegrationSystem {
    * Update all active building instances
    * @param {number} deltaTime - Time since last update
    */
-  update(deltaTime) {
+  update(deltaTime: number): void {
     const currentTime = Date.now();
     
     for (const [instanceId, buildingInstance] of this.activeBuildingInstances) {
@@ -269,7 +292,7 @@ export class BuildingIntegrationSystem {
    * @param {THREE.Object3D} mesh - The building mesh that was interacted with
    * @param {Object} interactionData - Additional interaction data
    */
-  handleInteraction(mesh, interactionData = {}) {
+  handleInteraction(mesh: THREE.Object3D, interactionData: any = {}): boolean {
     const buildingInstance = this.getBuildingInstanceByMesh(mesh);
     if (!buildingInstance) return false;
     
@@ -317,7 +340,7 @@ export class BuildingIntegrationSystem {
    * @param {THREE.Vector3} position - World position
    * @returns {string} Unique instance ID
    */
-  generateInstanceId(buildingType, position) {
+  generateInstanceId(buildingType: string, position: THREE.Vector3): string {
     const timestamp = Date.now();
     const posStr = `${Math.round(position.x)}_${Math.round(position.y)}_${Math.round(position.z)}`;
     return `${buildingType}_${posStr}_${timestamp}`;
@@ -328,7 +351,7 @@ export class BuildingIntegrationSystem {
    * @param {THREE.Object3D} mesh - The building mesh
    * @returns {string|null} Interaction prompt or null
    */
-  getInteractionPrompt(mesh) {
+  getInteractionPrompt(mesh: THREE.Object3D): string | null {
     const buildingInstance = this.getBuildingInstanceByMesh(mesh);
     if (!buildingInstance || !buildingInstance.integration.interaction.enabled) {
       return null;
@@ -399,7 +422,7 @@ export class BuildingIntegrationSystem {
       
       // Lifecycle hooks
       hooks: {
-        onPlace: (buildingInstance, scriptInstance) => {
+        onPlace: (buildingInstance: any, scriptInstance: any) => {
           // Register the farming plot with the farming system
           console.log('Registering farming plot with farming system at position:', buildingInstance.position);
           console.log('Building mesh:', buildingInstance.mesh);
@@ -422,13 +445,13 @@ export class BuildingIntegrationSystem {
           }
         },
         
-        onRemove: (buildingInstance, scriptInstance) => {
+        onRemove: (buildingInstance: any, scriptInstance: any) => {
           // Unregister the farming plot from the farming system
           console.log('Unregistering farming plot from farming system:', buildingInstance.mesh);
           this.farmingSystem.unregisterFarmingPlot(buildingInstance.mesh);
         },
         
-        onInteract: (buildingInstance, scriptInstance, interactionData) => {
+        onInteract: (buildingInstance: any, scriptInstance: any, interactionData: any) => {
           // Handle farming plot interaction
           const selectedItem = this.inventory.getSelectedItem();
           if (selectedItem && this.farmingSystem.isValidSeed(selectedItem.item.id)) {
@@ -453,7 +476,7 @@ export class BuildingIntegrationSystem {
           }
         },
         
-        onUpdate: (buildingInstance, scriptInstance, deltaTime) => {
+        onUpdate: (buildingInstance: any, scriptInstance: any, deltaTime: any) => {
           // Update farming system (growth, etc.)
           this.farmingSystem.update();
         }
