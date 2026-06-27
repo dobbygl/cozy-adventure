@@ -6,7 +6,7 @@
 
 *A cozy 3D survival and building game that runs right in your browser.*
 
-![Three.js](https://img.shields.io/badge/Three.js-0.160.0-000000?logo=three.js&logoColor=white)
+![Three.js](https://img.shields.io/badge/Three.js-0.185.0-000000?logo=three.js&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=node.js&logoColor=white)
@@ -80,7 +80,7 @@ The project is plain TypeScript ESM with a small toolchain. The quality gates ar
 | `npm test` | Run the Vitest suite (`test:watch`, `coverage`) |
 
 > [!WARNING]
-> `three` is pinned to an exact version (`0.160.0`). Three.js ships breaking changes in minor releases and `three/addons` loaders must match the core version exactly, so bump core and addons together.
+> `three` is pinned to an exact version (`0.185.0`). Three.js ships breaking changes in minor releases and `three/addons` loaders must match the core version exactly, so bump core and addons together (and keep `@types/three` on the same version).
 
 ## Project structure
 
@@ -110,15 +110,15 @@ cozy-adventure/
 The world and its colliders are built by `Environment`, tagged via `userData`, and read back by `CollisionSystem`. Saving is split by category (player, inventory, environment, buildings, world state) and persisted with chunking to fit storage limits inside the host iframe.
 
 > [!NOTE]
-> For the full architecture notes, conventions, and non-obvious gotchas, see [`CLAUDE.md`](CLAUDE.md). For the prioritized improvement roadmap and known issues, see [`PROPUESTA-MEJORAS.md`](PROPUESTA-MEJORAS.md).
+> For the full architecture notes, conventions, and non-obvious gotchas, see [`CLAUDE.md`](CLAUDE.md). For the prioritized improvement roadmap and known issues, see [`docs/PROPUESTA-MEJORAS.md`](docs/PROPUESTA-MEJORAS.md).
 
 ## Roadmap
 
-The project is moving toward a **persistent co-op multiplayer** experience: small groups sharing a world that lives on a server between sessions, deployed standalone (outside the playground iframe) on self-managed AWS. The world becomes server-authoritative, which is why world generation is already deterministic (seeded RNG in `src/shared/rng.ts`). See `PROPUESTA-MULTIJUGADOR.md` for the direction.
+The project is moving toward a **persistent co-op multiplayer** experience: small groups sharing a world that lives on a server between sessions, deployed standalone (outside the playground iframe) on self-managed AWS. The world becomes server-authoritative, which is why world generation is already deterministic (seeded RNG in `src/shared/rng.ts`). See `docs/PROPUESTA-MULTIJUGADOR.md` for the direction.
 
 ## Resources
 
 - [Three.js documentation](https://threejs.org/docs/)
 - [Vite guide](https://vite.dev/guide/)
 - [`CLAUDE.md`](CLAUDE.md): architecture, conventions, and gotchas
-- [`PROPUESTA-MEJORAS.md`](PROPUESTA-MEJORAS.md): improvement roadmap and known bugs
+- [`docs/PROPUESTA-MEJORAS.md`](docs/PROPUESTA-MEJORAS.md): improvement roadmap and known bugs
