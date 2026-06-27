@@ -82,8 +82,26 @@ export class MainMenu {
             <span class="btn-icon">💿</span>
             <span class="btn-text">Save Game</span>
           </button>
+
+          <button class="menu-btn" id="mp-toggle" type="button" aria-expanded="false">
+            <span class="btn-icon">🌐</span>
+            <span class="btn-text">Multiplayer</span>
+          </button>
+
+          <div class="mp-fields" id="mp-fields" style="display: none;">
+            <input class="mp-input" id="mp-url" type="text" inputmode="url" autocomplete="off"
+              placeholder="Server URL (wss://your-server)"
+              style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:12px 14px;border:3px solid #CD853F;border-radius:14px;background:#FFF8E7;color:#5b3a1a;font-family:'Nunito',sans-serif;font-size:1rem;" />
+            <input class="mp-input" id="mp-password" type="password" autocomplete="off"
+              placeholder="Password (if the server has one)"
+              style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:12px 14px;border:3px solid #CD853F;border-radius:14px;background:#FFF8E7;color:#5b3a1a;font-family:'Nunito',sans-serif;font-size:1rem;" />
+            <button class="menu-btn primary" id="mp-join" type="button">
+              <span class="btn-icon">🔌</span>
+              <span class="btn-text">Join Server</span>
+            </button>
+          </div>
         </div>
-        
+
         <!-- Save/Load Modal -->
         <div id="save-load-modal" class="save-load-modal" style="display: none;">
           <div class="modal-content">
@@ -698,6 +716,25 @@ export class MainMenu {
       this.startGame();
     });
 
+    // Multiplayer panel: toggle the fields, then connect on "Join Server".
+    const mpToggle = this.qs('#mp-toggle');
+    const mpFields = this.qs('#mp-fields');
+    mpToggle.addEventListener('click', () => {
+      const open = mpFields.style.display !== 'none';
+      mpFields.style.display = open ? 'none' : 'block';
+      mpToggle.setAttribute('aria-expanded', String(!open));
+    });
+    // Pre-fill the last server used (best-effort: storage may be partitioned in the host iframe).
+    try {
+      const last = localStorage.getItem('cozy:lastServer');
+      if (last) (this.qs('#mp-url') as HTMLInputElement).value = last;
+    } catch {
+      /* ignore: remembering the last server is non-critical */
+    }
+    this.qs('#mp-join').addEventListener('click', () => {
+      void this.joinMultiplayer();
+    });
+
     // Character selector (only affects a NEW game; loaded saves keep their model)
     const charOptions = this.menuElement.querySelectorAll<HTMLElement>('.char-option');
     charOptions.forEach((opt) => {
@@ -791,6 +828,44 @@ export class MainMenu {
     // Initialize the game if it hasn't been started yet
     if (this.gameInstance && typeof this.gameInstance.startGame === 'function') {
       this.gameInstance.startGame();
+    }
+  }
+
+  /** Connect to a multiplayer server, then start the game in network mode. */
+  async joinMultiplayer(): Promise<void> {
+    const url = (this.qs('#mp-url') as HTMLInputElement).value.trim();
+    const password = (this.qs('#mp-password') as HTMLInputElement).value;
+    if (!url) {
+      this.showMessage('Enter a server URL to join.', 'error');
+      return;
+    }
+    try {
+      localStorage.setItem('cozy:lastServer', url);
+    } catch {
+      /* best-effort */
+    }
+
+    // Lock in the chosen avatar before the world (and Player) is built.
+    setSelectedPlayerModel(this.selectedModel);
+
+    const joinBtn = this.qs('#mp-join') as HTMLButtonElement;
+    const label = joinBtn.querySelector<HTMLElement>('.btn-text');
+    const originalLabel = label?.textContent ?? 'Join Server';
+    joinBtn.disabled = true;
+    if (label) label.textContent = 'Connecting…';
+
+    try {
+      // startGame joins first (before building anything); on success it hides the
+      // menu and builds the shared world from the server's seed.
+      await this.gameInstance.startGame(undefined, undefined, { url, password: password || undefined });
+    } catch (err) {
+      // Bad URL, server down, wrong password, world full, or version mismatch: the
+      // game built nothing, so the menu is still up. Surface a clear error.
+      const msg = err instanceof Error ? err.message : 'connection failed';
+      this.showMessage(`Could not join: ${msg}`, 'error');
+    } finally {
+      joinBtn.disabled = false;
+      if (label) label.textContent = originalLabel;
     }
   }
   // Check for existing saves and update UI

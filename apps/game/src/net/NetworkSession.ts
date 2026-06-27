@@ -8,6 +8,7 @@ import type {
   RejectReason,
   KickReason,
   ErrorCode,
+  PeerInfo,
 } from '@cozy/shared';
 
 // Orchestrates one multiplayer session: it composes the transport (NetworkSystem)
@@ -45,19 +46,25 @@ export class NetworkSession {
   private remotes: RemotePlayerManager | null = null;
   private localPlayerId = '';
   private worldSeed = 0;
+  // Peer materialization is deferred until begin(): connect() can run before the
+  // scene exists (so a bad URL fails before anything is built), and peers that join
+  // during world loading are buffered here, then flushed once the scene is ready.
+  private started = false;
+  private pendingPeers: PeerInfo[] = [];
 
   constructor(deps: NetworkSessionDeps) {
     this.remoteFactory = deps.remoteFactory;
     this.now = deps.now;
     const h = deps.handlers ?? {};
     // Presence/relay are handled here; world + lifecycle events forward to the game.
-    // The remotes manager is created on connect (once our playerId is known); the
-    // arrow handlers null-check it, and peer events only arrive after `joined`, by
-    // which point connect() has already created it.
+    // Before begin(), peer joins/leaves are buffered (no scene yet); after begin(),
+    // they apply live and snapshots route into the per-peer interpolation buffers.
     this.net = new NetworkSystem(deps.config, {
-      onPeerJoined: (peer) => this.remotes?.add(peer),
-      onPeerLeft: (id) => this.remotes?.remove(id),
-      onAvatarSnapshots: (players) => this.remotes?.applySnapshots(players, this.now()),
+      onPeerJoined: (peer) => this.onPeerJoined(peer),
+      onPeerLeft: (id) => this.onPeerLeft(id),
+      onAvatarSnapshots: (players) => {
+        if (this.started) this.remotes?.applySnapshots(players, this.now());
+      },
       onWorldEvent: (diff) => h.onWorldEvent?.(diff),
       onWorldSnapshot: (world) => h.onWorldSnapshot?.(world),
       onCommandRejected: (seq, reason) => h.onCommandRejected?.(seq, reason),
@@ -68,14 +75,39 @@ export class NetworkSession {
     });
   }
 
-  /** Connect, join, and materialize the initial peers. Resolves with the join result. */
+  /**
+   * Connect and join. Resolves with the join result (seed, playerId, peers). Needs
+   * no scene, so it can run before the world is built; a bad URL/server rejects here
+   * before anything is torn down. Initial peers are buffered until {@link begin}.
+   */
   async connect(timeoutMs?: number): Promise<JoinResult> {
     const joined = await this.net.connect(timeoutMs);
     this.localPlayerId = joined.playerId;
     this.worldSeed = joined.seed;
     this.remotes = new RemotePlayerManager(joined.playerId, this.remoteFactory);
-    this.remotes.addAll(joined.peers);
+    this.pendingPeers = [...joined.peers];
     return joined;
+  }
+
+  /**
+   * Start materializing remote avatars (call once the scene exists). Flushes peers
+   * that joined during connect/loading and lets subsequent snapshots render.
+   */
+  begin(): void {
+    if (this.started) return;
+    this.started = true;
+    for (const peer of this.pendingPeers) this.remotes?.add(peer);
+    this.pendingPeers = [];
+  }
+
+  private onPeerJoined(peer: PeerInfo): void {
+    if (this.started) this.remotes?.add(peer);
+    else this.pendingPeers.push(peer);
+  }
+
+  private onPeerLeft(id: string): void {
+    if (this.started) this.remotes?.remove(id);
+    else this.pendingPeers = this.pendingPeers.filter((p) => p.playerId !== id);
   }
 
   get seed(): number {

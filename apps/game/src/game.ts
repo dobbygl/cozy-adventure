@@ -146,6 +146,20 @@ export class Game {
     choppedTreeIds?: string[],
     multiplayer?: { url: string; password?: string }
   ) {
+    // Multiplayer: join FIRST, before hiding the menu or building anything, so a bad
+    // URL or unreachable server rejects cleanly with the menu still up (the caller
+    // catches and shows the error). connect() needs no scene; the remote-avatar
+    // factory (which does) is only used later, in begin(), once the scene exists.
+    if (multiplayer) {
+      this.sessionMode = 'network';
+      this.network = new NetworkSession({
+        config: { url: multiplayer.url, password: multiplayer.password, modelId: getSelectedPlayerModel() },
+        remoteFactory: (peer) => new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId)),
+        now: () => performance.now(),
+      });
+      await this.network.connect();
+    }
+
     // Create and show loading screen first
     this.loadingScreen = new LoadingScreen();
     this.loadingScreen.setProgress(0, 'Starting game initialization...');
@@ -179,25 +193,10 @@ export class Game {
     // Create environment with collision system
     this.loadingScreen.setProgress(30, 'Creating environment...');
     this.loadingScreen.setTip('Generating trees, rocks, and terrain...');
-    // Resolve the world seed: a loaded save passes its stored seed; a brand-new
-    // game gets a fresh random one. Either way the layout is deterministic from it.
-    let worldSeed: number | string = seed ?? randomWorldSeed();
-    // Multiplayer: connect BEFORE generating the world so the server's canonical
-    // seed drives it (every client builds the same base world). The scene already
-    // exists, so the remote-avatar factory can use it. A failed connect throws; the
-    // caller (menu) restores the menu and surfaces the error.
-    if (multiplayer) {
-      this.sessionMode = 'network';
-      this.loadingScreen.setProgress(25, 'Connecting to server...');
-      this.loadingScreen.setTip('Joining the shared world...');
-      this.network = new NetworkSession({
-        config: { url: multiplayer.url, password: multiplayer.password, modelId: getSelectedPlayerModel() },
-        remoteFactory: (peer) => new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId)),
-        now: () => performance.now(),
-      });
-      await this.network.connect();
-      worldSeed = this.network.seed;
-    }
+    // Resolve the world seed: multiplayer uses the server's canonical seed (so every
+    // client builds the same base world); a loaded save passes its stored seed; a new
+    // local game gets a fresh random one. The layout is deterministic from it.
+    const worldSeed: number | string = this.network ? this.network.seed : (seed ?? randomWorldSeed());
     this.environment = new Environment(this.scene!, this.collisionSystem, worldSeed);
     // Exclude trees the player already chopped (from a loaded save) before generation,
     // so they don't reappear. Must be set before create() builds the trees.
@@ -268,7 +267,11 @@ export class Game {
     
     // Handle window resize
     this.setupEventListeners();
-    
+
+    // Multiplayer: the scene is built, so start materializing remote avatars
+    // (peers from the join, plus any who arrived during loading). No-op in local mode.
+    this.network?.begin();
+
     // Final setup
     this.loadingScreen.setProgress(95, 'Finalizing setup...');
     this.loadingScreen.setTip('Almost ready! Preparing final touches...');

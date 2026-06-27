@@ -64,6 +64,7 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     });
     cleanups.push(() => a.destroy());
     await a.connect();
+    a.begin(); // scene is ready: start materializing remotes
 
     const b = new NetworkSystem({ url: ctx.url, displayName: 'B' });
     cleanups.push(() => b.destroy());
@@ -81,6 +82,26 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     expect(created.get(jb.playerId)?.pushed.length).toBeGreaterThan(0); // snapshots routed
   });
 
+  it('buffers peers that join before begin() and flushes them on begin()', async () => {
+    ctx = await startTestServer();
+    const a = new NetworkSession({
+      config: { url: ctx.url },
+      remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
+      now: () => 0,
+    });
+    cleanups.push(() => a.destroy());
+    await a.connect(); // joined but not begun: no scene yet
+
+    const b = new NetworkSystem({ url: ctx.url });
+    cleanups.push(() => b.destroy());
+    await b.connect();
+    await sleep(150);
+    expect(a.peerCount).toBe(0); // deferred while the world loads
+
+    a.begin();
+    expect(a.peerCount).toBe(1); // flushed once the scene is ready
+  });
+
   it('drops a peer that leaves and disposes its remote', async () => {
     ctx = await startTestServer();
     const created = new Map<string, FakeRemote>();
@@ -95,6 +116,7 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     });
     cleanups.push(() => a.destroy());
     await a.connect();
+    a.begin();
 
     const b = new NetworkSystem({ url: ctx.url });
     const jb = await b.connect();
