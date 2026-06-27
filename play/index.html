@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cozy Adventure</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+        font-family: 'Arial', sans-serif;
+      }
+      
+      /* Vignette overlay */
+      #vignette {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 50;
+        background: radial-gradient(
+          ellipse at center,
+          transparent 30%,
+          rgba(0, 0, 0, 0.1) 60%,
+          rgba(0, 0, 0, 0.3) 85%,
+          rgba(0, 0, 0, 0.6) 100%
+        );
+      }
+      
+      #gameContainer {
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+      }
+      
+      
+      #compass {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 200px;
+        height: 40px;
+        z-index: 100;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+        background: none;
+      }
+      
+      #compassStrip {
+        position: absolute;
+        height: 100%;
+        width: 1800px; /* 6x width for infinite scrolling */
+        display: flex;
+        align-items: center;
+        left: -900px; /* Center the strip */
+      }
+      
+      .compass-direction {
+        position: absolute;
+        color: #fff;
+        font-size: 14px;
+        font-weight: bold;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      }
+      
+      
+      #compassDegrees {
+        position: absolute;
+        bottom: 2px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #fff;
+        font-size: 10px;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      }
+      
+      #heldItemPosition {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        backdrop-filter: blur(5px);
+        z-index: 100;
+        font-family: 'Courier New', monospace;
+      }
+      
+      #itemCoords {
+        color: #4CAF50;
+        font-weight: bold;
+      }
+      
+      #playerPosition {
+        position: absolute;
+        top: 120px;
+        right: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        backdrop-filter: blur(5px);
+        z-index: 100;
+        font-family: 'Courier New', monospace;
+      }
+      
+      #playerCoords {
+        color: #2196F3;
+        font-weight: bold;
+      }
+      
+      #playerHeightControl {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        backdrop-filter: blur(5px);
+        z-index: 100;
+        min-width: 200px;
+      }
+      
+      #playerHeightSlider {
+        width: 150px;
+        margin: 5px 0;
+      }
+      
+      #playerHeightValue {
+        color: #4CAF50;
+        font-weight: bold;
+        margin-left: 10px;
+      }
+      
+      #healthBar {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        display: flex;
+        gap: 5px;
+        z-index: 100;
+      }
+      
+      .heart {
+        width: 32px;
+        height: 32px;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ff4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+      }
+      
+      .heart.empty {
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23ff4444" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>');
+        opacity: 0.4;
+      }
+      
+      #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-size: 18px;
+        text-align: center;
+        z-index: 200;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-2BTPTPjx.js"></script>
+  </head>
+  <body>
+    <div id="vignette"></div>
+    <div id="gameContainer">
+      <div id="loading">Loading Character Controller...</div>
+      
+      <div id="compass">
+        <div id="compassStrip">
+          <!-- Compass directions will be positioned dynamically -->
+        </div>
+        <div id="compassCenter"></div>
+        <div id="compassDegrees">0°</div>
+      </div>
+      
+      
+      <div id="healthBar">
+        <div class="heart" id="heart1"></div>
+        <div class="heart" id="heart2"></div>
+        <div class="heart" id="heart3"></div>
+        <div class="heart" id="heart4"></div>
+        <div class="heart" id="heart5"></div>
+      </div>
+      
+      <div id="heldItemPosition" style="display: none;">
+        <strong>Held Item Position:</strong><br>
+        <span id="itemCoords">X: 0.000, Y: 0.000, Z: 0.000</span>
+      </div>
+      
+      <div id="playerPosition" style="display: none;">
+        <strong>Player Position:</strong><br>
+        <span id="playerCoords">X: 0.000, Y: 0.000, Z: 0.000</span>
+      </div>
+      
+      <div id="playerHeightControl" style="display: none;">
+        <strong>Player Collider Offset:</strong><br>
+        <input type="range" id="playerHeightSlider" min="-2" max="3" step="0.1" value="0.0">
+        <span id="playerHeightValue">0.0</span>
+        <br><small style="color: #ccc;">Adjusts where feet touch ground</small>
+      </div>
+      
+      <div id="occupiedSlots" style="display: none; position: absolute;
+        bottom: 20px;
+        right: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 12px;
+        backdrop-filter: blur(5px);
+        z-index: 100;
+        font-family: 'Courier New', monospace;
+        max-width: 300px;
+        max-height: 200px;
+        overflow-y: auto;">
+        <strong>Occupied Grid Slots:</strong><br>
+        <div id="occupiedSlotsList">None</div>
+      </div>
+    </div>
+    
+    <script src="./ChatManager.js"></script>
+    <script src="./ImageGenerator.js"></script>
+    <script src="./ProgressLogger.js"></script>
+    <script src="./OGP.js"></script>
+    <script src="./ScriptsLoader-Universal.js"></script>
+  </body>
+</html>

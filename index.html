@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cozy Adventure: tu isla, a tu ritmo</title>
+  <meta name="description" content="Cozy Adventure es un juego de supervivencia y construcción tranquilo en el navegador: una isla que es tuya, donde talas, cultivas y construyes encajando piezas en una rejilla. Hecho con Three.js." />
+  <meta name="theme-color" content="#1FA090" />
+
+  <!-- Social. Al desplegar, og:image debe ser URL ABSOLUTA (https://dominio/assets/og.jpg). -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Cozy Adventure: tu isla, a tu ritmo" />
+  <meta property="og:description" content="Supervivencia y construcción tranquila en el navegador. Una isla persistente que construyes encajando piezas en una rejilla." />
+  <meta property="og:image" content="assets/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Cozy Adventure: tu isla, a tu ritmo" />
+  <meta name="twitter:image" content="assets/og.jpg" />
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%9D%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Mark JS so reveals can animate; safety net shows everything if main.js never runs.
+    document.documentElement.classList.add('js');
+    addEventListener('load', function () {
+      setTimeout(function () {
+        if (window.__revealReady) return;
+        document.querySelectorAll('[data-reveal]').forEach(function (el) { el.classList.add('is-in'); });
+      }, 1500);
+    });
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <div class="progress" aria-hidden="true"></div>
+
+  <header class="header">
+    <a class="brand" href="#hero" aria-label="Cozy Adventure, inicio">
+      <span class="brand__mark" aria-hidden="true">🏝️</span>
+      <span class="brand__name">Cozy&nbsp;Adventure</span>
+    </a>
+    <nav class="nav" aria-label="Secciones">
+      <a href="#que-es">Qué es</a>
+      <a href="#mundo">El mundo</a>
+      <a href="#construir">Construir</a>
+      <a href="#controles">Controles</a>
+    </nav>
+    <a class="btn btn--primary" href="play/">Jugar</a>
+  </header>
+
+  <nav class="rail" aria-label="Recorrido">
+    <ol>
+      <li><a class="rail__dot" href="#hero" aria-current="true"><span></span><i>isla</i></a></li>
+      <li><a class="rail__dot" href="#que-es"><span></span><i>qué es</i></a></li>
+      <li><a class="rail__dot" href="#mundo"><span></span><i>mundo</i></a></li>
+      <li><a class="rail__dot" href="#companero"><span></span><i>perro</i></a></li>
+      <li><a class="rail__dot" href="#construir"><span></span><i>rejilla</i></a></li>
+      <li><a class="rail__dot" href="#controles"><span></span><i>teclas</i></a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
+    <!-- Hero -->
+    <section id="hero" class="band hero">
+      <div class="wrap hero__grid">
+        <div class="hero__copy">
+          <p class="eyebrow">isla 01 · cozy</p>
+          <h1 class="display hero__title">Tu isla.<br />A tu ritmo.</h1>
+          <p class="lead">Cozy Adventure es un juego tranquilo de supervivencia y construcción que corre en el navegador. Desembarcas en una isla que es tuya: talas árboles, recoges manzanas, cultivas y levantas tu refugio encajando piezas en una rejilla. Sin prisa y sin reloj. Es un prototipo, hay poco y es pronto, pero ya se juega.</p>
+          <p class="mono datastrip">
+            <span>ISLA persistente</span><span class="dot">·</span>
+            <span>se guarda sola</span><span class="dot">·</span>
+            <span>jugable ya</span>
+          </p>
+          <div class="actions">
+            <a class="btn btn--primary btn--lg" href="play/">Jugar ahora</a>
+            <a class="btn btn--ghost btn--lg" href="#construir">Cómo se construye</a>
+          </div>
+        </div>
+        <div class="hero__stage">
+          <span class="stage__shadow" aria-hidden="true"></span>
+          <img class="hero__art float" src="assets/hero-island.webp" alt="Una pequeña isla tropical con su cabaña, árboles y mar, vista en diorama" width="1536" height="1024" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Qué es -->
+    <section id="que-es" class="band">
+      <div class="wrap split">
+        <div data-reveal>
+          <p class="eyebrow">qué es</p>
+          <h2 class="display h2">Una isla que es tuya y se queda.</h2>
+          <p class="lead">No hay misiones que tachar ni una barra que vigilar. Hay una isla, y tú decides qué hacer con ella: despejar un claro, plantar, o construir hasta que tenga la forma que te guste. El mundo se guarda solo, así que cada vez que vuelves sigue donde lo dejaste. Tranquilo de verdad, no tranquilo de mentira con cuenta atrás.</p>
+        </div>
+        <figure class="card card--note" data-reveal data-reveal-delay="1">
+          <ul class="ticks">
+            <li>Talar, recolectar y cultivar</li>
+            <li>Construir por piezas en una rejilla</li>
+            <li>Inventario y barra rápida</li>
+            <li>Un perro que te sigue</li>
+          </ul>
+          <figcaption class="mono">bucle cozy · sin reloj</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- El mundo -->
+    <section id="mundo" class="band">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>el mundo</p>
+        <h2 class="display h2" data-reveal>Madera, manzanas y un huerto.</h2>
+        <p class="lead measure" data-reveal>La isla da lo justo para empezar. Los árboles caen a hachazos y sueltan madera; los manzanos te dan de comer; el huerto crece a su tiempo. Todo lo que recoges va a tu inventario y de ahí a tu construcción. Lo de siempre en un cozy, hecho para que apetezca repetirlo.</p>
+        <div class="specimens">
+          <figure class="specimen" data-reveal>
+            <img src="assets/apple-tree.webp" alt="Un manzano de copa redonda con manzanas rojas" width="1024" height="1536" loading="lazy" />
+            <figcaption><b>Manzano</b><span class="mono">tala · recolecta</span></figcaption>
+          </figure>
+          <figure class="specimen" data-reveal data-reveal-delay="1">
+            <img src="assets/char.webp" alt="El personaje con un hacha de madera" width="1024" height="1536" loading="lazy" />
+            <figcaption><b>Tú</b><span class="mono">hacha en mano</span></figcaption>
+          </figure>
+          <figure class="specimen specimen--wide" data-reveal data-reveal-delay="2">
+            <img src="assets/cabin.webp" alt="Una cabaña de madera construida con muros, suelo y rampa" width="1024" height="1024" loading="lazy" />
+            <figcaption><b>Tu refugio</b><span class="mono">lo construyes tú</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compañero -->
+    <section id="companero" class="band">
+      <div class="wrap split split--reverse">
+        <div class="stage stage--inline" data-reveal>
+          <span class="stage__shadow" aria-hidden="true"></span>
+          <img class="float" src="assets/dog.webp" alt="El perro compañero, sentado y contento" width="1024" height="1024" loading="lazy" />
+        </div>
+        <div data-reveal data-reveal-delay="1">
+          <p class="eyebrow">compañero</p>
+          <h2 class="display h2">No estás sola en la isla.</h2>
+          <p class="lead">Un perro te acompaña por el mundo. Te sigue mientras exploras y construyes, y hace la isla un poco menos isla. Pequeño detalle, gran diferencia: una compañía que no pide nada a cambio.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Firma: rejilla de construcción -->
+    <section id="construir" class="band band--feature">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>la firma · construir</p>
+        <h2 class="display h2" data-reveal>Encaja la pieza en la rejilla.</h2>
+        <p class="lead measure" data-reveal>Construir es el gesto central del juego. Entras en modo construcción, eliges una pieza (muro, suelo, rampa) y aparece como fantasma sobre la isla. Se ajusta sola a la rejilla: la giras, la colocas y queda donde toca, casilla a casilla. Sin medir, sin pelearte con el ratón. Lo de abajo es la idea, dibujada.</p>
+
+        <figure class="signature" data-reveal>
+          <div class="signature__scene">
+            <svg class="iso" viewBox="0 0 480 300" role="img" aria-label="Una rejilla isométrica con un suelo y un muro ya colocados, y una pieza fantasma flotando que se va a ajustar a una casilla.">
+              <g class="iso__grid">
+                <!-- piso 3x3, de atrás a delante -->
+                <polygon class="tile" points="240,48 284,70 240,92 196,70" />
+                <polygon class="tile" points="284,70 328,92 284,114 240,92" />
+                <polygon class="tile" points="196,70 240,92 196,114 152,92" />
+                <polygon class="tile" points="328,92 372,114 328,136 284,114" />
+                <polygon class="tile" points="240,92 284,114 240,136 196,114" />
+                <polygon class="tile" points="152,92 196,114 152,136 108,114" />
+                <polygon class="tile" points="284,114 328,136 284,158 240,136" />
+                <polygon class="tile" points="196,114 240,136 196,158 152,136" />
+                <polygon class="tile" points="240,136 284,158 240,180 196,158" />
+              </g>
+
+              <!-- suelo construido (grass), bajo, en (1,2) -->
+              <g class="piece piece--floor">
+                <polygon class="face face--left" points="152,120 196,142 196,158 152,136" />
+                <polygon class="face face--right" points="196,142 240,120 240,136 196,158" />
+                <polygon class="face face--top" points="196,98 240,120 196,142 152,120" />
+              </g>
+
+              <!-- muro (teal), alto, en (2,2) front -->
+              <g class="piece piece--wall">
+                <polygon class="face face--left" points="196,94 240,116 240,180 196,158" />
+                <polygon class="face face--right" points="240,116 284,94 284,158 240,180" />
+                <polygon class="face face--top" points="240,72 284,94 240,116 196,94" />
+              </g>
+
+              <!-- línea de caída del fantasma -->
+              <line class="dropline" x1="284" y1="60" x2="284" y2="92" />
+              <!-- pieza fantasma flotando sobre (1,0) -->
+              <g class="ghost anim-hover">
+                <polygon class="ghost__face ghost__left" points="240,38 284,60 284,74 240,56" />
+                <polygon class="ghost__face ghost__right" points="284,60 328,38 328,56 284,74" />
+                <polygon class="ghost__face ghost__top" points="284,16 328,38 284,60 240,38" />
+              </g>
+            </svg>
+          </div>
+          <div class="signature__keys">
+            <span class="kbd">V</span><span class="kw">modo construir</span>
+            <span class="kbd">R</span><span class="kw">rotar la pieza</span>
+            <span class="kbd">X</span><span class="kw">construir o borrar</span>
+            <span class="kbd">C</span><span class="kw">enfocar la selección</span>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Controles -->
+    <section id="controles" class="band">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>controles</p>
+        <h2 class="display h2" data-reveal>Lo justo para moverte.</h2>
+        <p class="lead measure" data-reveal>Andar con WASD, correr con Shift, la cámara con el ratón. Para construir, las cuatro teclas de arriba. No hay más que aprender.</p>
+        <ul class="keys" data-reveal>
+          <li><span class="keys__caps"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span></span><b>Moverte</b><span class="mono">o flechas</span></li>
+          <li><span class="keys__caps"><span class="kbd">Shift</span></span><b>Correr</b><span class="mono">mantener</span></li>
+          <li><span class="keys__caps"><span class="kbd">Espacio</span></span><b>Saltar</b><span class="mono">apoyado</span></li>
+          <li><span class="keys__caps"><span class="kbd">Ratón</span></span><b>Cámara</b><span class="mono">tercera persona</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Cierre -->
+    <section id="cierre" class="band band--close">
+      <div class="wrap split">
+        <div data-reveal>
+          <p class="eyebrow eyebrow--sun">empieza</p>
+          <h2 class="display h2">Desembarca y haz tu isla.</h2>
+          <p class="lead">Corre en el navegador, se guarda sola, no pide nada. Dale unas vueltas, planta un huerto, levanta una cabaña. Es un prototipo y va creciendo: el siguiente paso es jugar la misma isla en co-op. El desarrollo es abierto.</p>
+          <div class="actions">
+            <a class="btn btn--sun btn--lg" href="play/">Jugar ahora</a>
+            <a class="btn btn--ghost btn--lg" href="https://github.com/dobbygl/cozy-adventure" target="_blank" rel="noopener">Seguir el código</a>
+          </div>
+        </div>
+        <div class="stage stage--inline" data-reveal data-reveal-delay="1">
+          <span class="stage__shadow" aria-hidden="true"></span>
+          <img class="float" src="assets/cabin.webp" alt="Una cabaña construida con muros, suelo y rampa" width="1024" height="1024" loading="lazy" />
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__wrap">
+      <span class="brand__name">Cozy Adventure</span>
+      <p class="mono footer__stack">Three.js · Vite · TypeScript · mundo determinista por semilla</p>
+      <p class="footer__by">un proyecto de <a href="https://github.com/dobbygl" target="_blank" rel="noopener">dobbygl</a></p>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
