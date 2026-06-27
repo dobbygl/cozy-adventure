@@ -21,6 +21,14 @@ import { randomWorldSeed } from '@cozy/shared';
 import { InputSchemeManager } from './input/scheme.js';
 import { TouchInput } from './input/touch.js';
 import { TouchControls } from './input/TouchControls.js';
+import { NetworkSession } from './net/NetworkSession.js';
+import { RemotePlayer } from './net/RemotePlayer.js';
+import { getSelectedPlayerModel, type PlayerModelId } from './playerModel.js';
+
+/** Narrow a peer's model id string to a known PlayerModelId, or undefined (use default). */
+function coerceModelId(id?: string): PlayerModelId | undefined {
+  return id === 'female' || id === 'male' ? id : undefined;
+}
 
 export class Game {
   scene: THREE.Scene | null;
@@ -58,6 +66,10 @@ export class Game {
   gameStartTime: number;
   inGameUI: InGameUI | null;
   loadingScreen: LoadingScreen | null;
+  /** Active multiplayer session, or null in single-player (local) mode. */
+  network: NetworkSession | null;
+  /** 'local' (offline, cookies, pause-on-hide) or 'network' (live, keepalive, no freeze). */
+  sessionMode: 'local' | 'network';
   /** Built in createSampleItems() during startGame(), before any read. */
   itemRegistry!: Record<string, Item>;
 
@@ -107,7 +119,11 @@ export class Game {
     
     // Loading screen
     this.loadingScreen = null;
-    
+
+    // Multiplayer session (null in local mode)
+    this.network = null;
+    this.sessionMode = 'local';
+
     // Store game instance globally for slider access
     (window as any).gameInstance = this;
   }
@@ -125,7 +141,11 @@ export class Game {
     // Don't initialize the game world yet - wait for user to click "Start Game"
     console.log('Main menu and save system initialized. Game world will load when user starts the game.');
   }
-  async startGame(seed?: number | string, choppedTreeIds?: string[]) {
+  async startGame(
+    seed?: number | string,
+    choppedTreeIds?: string[],
+    multiplayer?: { url: string; password?: string }
+  ) {
     // Create and show loading screen first
     this.loadingScreen = new LoadingScreen();
     this.loadingScreen.setProgress(0, 'Starting game initialization...');
@@ -161,7 +181,23 @@ export class Game {
     this.loadingScreen.setTip('Generating trees, rocks, and terrain...');
     // Resolve the world seed: a loaded save passes its stored seed; a brand-new
     // game gets a fresh random one. Either way the layout is deterministic from it.
-    const worldSeed = seed ?? randomWorldSeed();
+    let worldSeed: number | string = seed ?? randomWorldSeed();
+    // Multiplayer: connect BEFORE generating the world so the server's canonical
+    // seed drives it (every client builds the same base world). The scene already
+    // exists, so the remote-avatar factory can use it. A failed connect throws; the
+    // caller (menu) restores the menu and surfaces the error.
+    if (multiplayer) {
+      this.sessionMode = 'network';
+      this.loadingScreen.setProgress(25, 'Connecting to server...');
+      this.loadingScreen.setTip('Joining the shared world...');
+      this.network = new NetworkSession({
+        config: { url: multiplayer.url, password: multiplayer.password, modelId: getSelectedPlayerModel() },
+        remoteFactory: (peer) => new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId)),
+        now: () => performance.now(),
+      });
+      await this.network.connect();
+      worldSeed = this.network.seed;
+    }
     this.environment = new Environment(this.scene!, this.collisionSystem, worldSeed);
     // Exclude trees the player already chopped (from a loaded save) before generation,
     // so they don't reappear. Must be set before create() builds the trees.
@@ -637,6 +673,21 @@ addSampleItemsToInventory() {
         this.player.update(deltaTime, this.characterController, this.camera!.position);
       }
 
+      // Multiplayer: relay our avatar (NetworkSystem rate-limits to ~15 Hz, not per
+      // frame) and advance remote avatars by interpolation. No-op in local mode.
+      if (this.network) {
+        const mesh = this.player?.mesh;
+        if (mesh) {
+          this.network.setLocalAvatar({
+            position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
+            rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
+            movement: this.characterController.getMovementState(),
+            heldItemId: this.inventory?.getSelectedItem()?.item.id ?? null,
+          });
+        }
+        this.network.update(deltaTime, performance.now());
+      }
+
       // Update compass
       this.compass.update(this.camera!);
       
@@ -702,6 +753,10 @@ addSampleItemsToInventory() {
 
   pause() {
     // Called on tab-hide (see main.js) and by any in-game pause.
+    // In multiplayer the shared world cannot freeze: keep the simulation running
+    // and the network keepalive alive so the player stays present (documented
+    // Principle I deviation, network mode only). Local mode is unchanged.
+    if (this.sessionMode === 'network') return;
     if (!this.isGameStarted || this.isPaused) return;
     this.isPaused = true;
     this.clock.stop(); // freeze elapsed time so deltaTime doesn't jump on resume
@@ -769,8 +824,15 @@ addSampleItemsToInventory() {
     if (this.debugUI) {
       this.debugUI.destroy();
     }
+
+    // Tear down the multiplayer session (remote avatars + transport), symmetric
+    // with startGame. Safe in local mode (no-op when there is no session).
+    if (this.network) {
+      this.network.destroy();
+      this.network = null;
+    }
   }
-  
+
   async initializeBuildingSystem() {
     try {
       console.log('Initializing building system...');
