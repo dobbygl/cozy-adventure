@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/**/*.{js,ts}", "vite.config.js", "vitest.config.js"],
+  "include": ["src/**/*.js", "src/**/*.ts", "vite.config.js", "vitest.config.js"],
   "exclude": ["node_modules", "dist", "public", "coverage"]
 }
