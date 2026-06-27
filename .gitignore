@@ -26,6 +26,13 @@ web/assets/ref-gen/
 .mcp.json
 .codegraph/
 
+# Prompts de trabajo de Spec Kit (borradores, no versionar)
+*.prompt
+
+# Especificaciones de Spec Kit: se quedan en local, no versionar
+specs/
+.specify/
+
 # Local environment files (may contain secrets)
 .env
 .env.*
