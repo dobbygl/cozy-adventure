@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    // Keep class-field assignment semantics (the pre-tsconfig esbuild default).
+    // The game was authored/tested under these; flipping to define semantics
+    // changed the emitted bundle, so we pin it to preserve runtime behavior.
+    "useDefineForClassFields": false,
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
