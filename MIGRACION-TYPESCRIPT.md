@@ -70,7 +70,7 @@ Un archivo se da por migrado cuando:
 
 ### Ola 2 — Hojas puras de lógica (sin deps internas)
 - [x] `src/WallIntersectionHelper.js`
-- [ ] `src/HealthSystem.js`
+- [x] `src/HealthSystem.js`
 - [ ] `src/ResourceSystem.js`
 - [ ] `src/FarmingSystem.js`
 - [ ] `src/ItemUseSystem.js`
