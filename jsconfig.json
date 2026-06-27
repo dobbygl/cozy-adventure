@@ -6,8 +6,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
     "checkJs": false,
-    "strict": false,
-    "noImplicitAny": false,
+    "strict": true,
+    "noImplicitAny": true,
     "skipLibCheck": true,
     "noEmit": true
   },
