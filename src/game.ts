@@ -834,7 +834,7 @@ async initializeDogCompanion() {
     }
     return false;
   }
-  getSaveSlots(): any[] {
+  getSaveSlots(): ReturnType<SaveSystem['getSaveSlots']> {
     if (this.saveSystem) {
       return this.saveSystem.getSaveSlots();
     }
