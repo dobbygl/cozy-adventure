@@ -1,7 +1,38 @@
 import * as THREE from 'three';
+import type { Inventory, Item } from './inventory.js';
+import type { ItemDropSystem } from './ItemDropSystem.js';
 
 export class TreeChoppingSystem {
-  constructor(scene, camera, inventory, itemRegistry, environment, itemDropSystem) {
+  scene: THREE.Scene;
+  camera: THREE.Camera;
+  inventory: Inventory;
+  itemRegistry: Record<string, Item>;
+  // environment is not yet migrated (Ola 5); typed loosely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  environment: any;
+  itemDropSystem: ItemDropSystem;
+  raycaster: THREE.Raycaster;
+  mouse: THREE.Vector2;
+  treeHealth: Map<THREE.Object3D, number>;
+  maxTreeHealth: number;
+  woodPerHit: number;
+  appleTreeDrops: Map<THREE.Object3D, number>;
+  maxApplesPerTree: number;
+  choppingRange: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  player: any;
+  hitEffects: { particles: THREE.Group; startTime: number }[];
+  mouseIndicator: HTMLElement | null;
+  hoveredTree: THREE.Object3D | null;
+
+  constructor(
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    inventory: Inventory,
+    itemRegistry: Record<string, Item>,
+    environment: any,
+    itemDropSystem: ItemDropSystem
+  ) {
     this.scene = scene;
     this.camera = camera;
     this.inventory = inventory;
@@ -41,12 +72,12 @@ export class TreeChoppingSystem {
     console.log('TreeChoppingSystem initialized');
   }
   
-  setPlayer(player) {
+  setPlayer(player: any): void {
     this.player = player;
     console.log('Player reference set for tree chopping system');
   }
   
-  handleClick(event) {
+  handleClick(event: MouseEvent): void {
     // Only process clicks if player is holding an axe
     const selectedItem = this.inventory.getSelectedItem();
     if (!selectedItem || selectedItem.item.id !== 'axe') {
@@ -106,8 +137,8 @@ export class TreeChoppingSystem {
   }
   
   getAllTreeMeshes() {
-    const treeMeshes = [];
-    
+    const treeMeshes: THREE.Object3D[] = [];
+
     // Look for trees in the scene
     this.scene.traverse((child) => {
       // Skip tree colliders completely - they should not be clickable
@@ -124,7 +155,7 @@ export class TreeChoppingSystem {
     return treeMeshes;
   }
   
-  isTreeMesh(mesh) {
+  isTreeMesh(mesh: any): boolean {
     if (!mesh.isMesh) return false;
     
     // Explicitly exclude tree colliders - they should never be considered tree meshes for clicking
@@ -183,7 +214,7 @@ export class TreeChoppingSystem {
     return false;
   }
   
-  findTreeRoot(hitMesh) {
+  findTreeRoot(hitMesh: any): any {
     // Find the root tree object (usually a Group containing the tree model)
     let current = hitMesh;
     let treeRoot = null;
@@ -199,7 +230,7 @@ export class TreeChoppingSystem {
     return treeRoot || hitMesh;
   }
   
-  chopTree(treeMesh, hitPoint) {
+  chopTree(treeMesh: any, hitPoint: THREE.Vector3): void {
     console.log('🪓 CHOP TREE DEBUG - Starting chopTree method');
     console.log('Tree being chopped:', treeMesh.name || 'unnamed');
     console.log('Tree position:', treeMesh.position);
@@ -217,7 +248,7 @@ export class TreeChoppingSystem {
     }
     
     // Reduce tree health
-    let currentHealth = this.treeHealth.get(treeMesh);
+    let currentHealth = this.treeHealth.get(treeMesh)!;
     currentHealth--;
     this.treeHealth.set(treeMesh, currentHealth);
     
@@ -273,7 +304,7 @@ export class TreeChoppingSystem {
     }
   }
   
-  createHitEffect(position) {
+  createHitEffect(position: THREE.Vector3): void {
     // Create particle effect at hit location
     const particleCount = 10;
     const particles = new THREE.Group();
@@ -321,7 +352,7 @@ export class TreeChoppingSystem {
     this.cleanupOldEffects();
   }
   
-  applyTreeDamageEffect(treeMesh, health) {
+  applyTreeDamageEffect(treeMesh: any, health: number): void {
     // Only apply damage effects if tree has actually taken damage
     if (health >= this.maxTreeHealth) {
       return; // Tree is at full health, no damage effects needed
@@ -330,7 +361,7 @@ export class TreeChoppingSystem {
     // Apply visual damage to tree based on health
     const damageRatio = 1 - (health / this.maxTreeHealth);
     
-    treeMesh.traverse((child) => {
+    treeMesh.traverse((child: any) => {
       if (child.isMesh && child.material) {
         // Darken the tree as it takes damage
         const originalColor = child.userData.originalColor || child.material.color.clone();
@@ -355,7 +386,7 @@ export class TreeChoppingSystem {
     });
   }
   
-  destroyTree(treeMesh) {
+  destroyTree(treeMesh: any): void {
     console.log('Tree destroyed!');
     
     // Mark tree as being destroyed to prevent further chopping
@@ -387,9 +418,9 @@ export class TreeChoppingSystem {
     this.removeTreeCollider(treeMesh);
   }
   
-  removeTreeCollider(treeMesh) {
+  removeTreeCollider(treeMesh: any): void {
     // Find and remove the associated tree collider
-    const collidersToRemove = [];
+    const collidersToRemove: THREE.Object3D[] = [];
     
     this.scene.traverse((child) => {
       if (child.name && child.name.includes('treeCollider') && 
@@ -408,7 +439,7 @@ export class TreeChoppingSystem {
     });
   }
   
-  playTreeHitAnimation(treeMesh) {
+  playTreeHitAnimation(treeMesh: any): void {
     // Store original rotation for restoration
     if (!treeMesh.userData.originalRotation) {
       treeMesh.userData.originalRotation = treeMesh.rotation.clone();
@@ -449,7 +480,7 @@ export class TreeChoppingSystem {
     animateHit();
   }
   
-  playTreeBreakAnimation(treeMesh, onComplete) {
+  playTreeBreakAnimation(treeMesh: any, onComplete: () => void): void {
     // Store original values
     if (!treeMesh.userData.originalScale) {
       treeMesh.userData.originalScale = treeMesh.scale.clone();
@@ -503,7 +534,7 @@ export class TreeChoppingSystem {
     animateBreak();
   }
   
-  createDestructionEffect(position) {
+  createDestructionEffect(position: THREE.Vector3): void {
     // Create larger particle effect for tree destruction
     const particleCount = 25;
     const particles = new THREE.Group();
@@ -573,7 +604,7 @@ export class TreeChoppingSystem {
         this.hitEffects.splice(i, 1);
       } else {
         // Update particle positions
-        effect.particles.children.forEach(particle => {
+        effect.particles.children.forEach((particle: any) => {
           if (particle.userData.velocity) {
             particle.position.add(particle.userData.velocity.clone().multiplyScalar(0.016)); // ~60fps
             particle.userData.velocity.y -= 0.05; // Gravity
@@ -604,7 +635,7 @@ export class TreeChoppingSystem {
   
   createMouseIndicator() {
     this.mouseIndicator = document.createElement('div');
-    this.mouseIndicator.style.cssText = `
+    this.mouseIndicator!.style.cssText = `
       position: absolute;
       color: white;
       font-size: 12px;
@@ -616,7 +647,7 @@ export class TreeChoppingSystem {
     document.body.appendChild(this.mouseIndicator);
   }
   
-  handleMouseMove(event) {
+  handleMouseMove(event: MouseEvent): void {
     const selectedItem = this.inventory.getSelectedItem();
     const hasAxe = selectedItem && selectedItem.item.id === 'axe';
     
@@ -653,14 +684,14 @@ export class TreeChoppingSystem {
     }
   }
   
-  showMouseIndicator(x, y) {
-    this.mouseIndicator.style.display = 'block';
-    this.mouseIndicator.style.left = x + 10 + 'px';
-    this.mouseIndicator.style.top = y - 20 + 'px';
+  showMouseIndicator(x: number, y: number): void {
+    this.mouseIndicator!.style.display = 'block';
+    this.mouseIndicator!.style.left = x + 10 + 'px';
+    this.mouseIndicator!.style.top = y - 20 + 'px';
   }
   
   hideMouseIndicator() {
-    this.mouseIndicator.style.display = 'none';
+    this.mouseIndicator!.style.display = 'none';
   }
   
   destroy() {
@@ -694,7 +725,7 @@ export class TreeChoppingSystem {
     console.log('TreeChoppingSystem destroyed');
   }
   
-  isAppleTree(treeMesh) {
+  isAppleTree(treeMesh: any): boolean {
     // Check the entire tree hierarchy for apple tree indicators
     let isApple = false;
     
@@ -710,7 +741,7 @@ export class TreeChoppingSystem {
     
     // Also traverse all children to check for apple tree components
     if (!isApple) {
-      treeMesh.traverse((child) => {
+      treeMesh.traverse((child: any) => {
         if (child.name && child.name.toLowerCase().includes('apple')) {
           isApple = true;
         }
@@ -721,7 +752,7 @@ export class TreeChoppingSystem {
     // The apple tree assets are: env_apple_tree.glb, env_apple_tree2.glb, env_apple_tree3.glb
     if (!isApple && this.environment && this.environment.loadedTrees) {
       // Find this tree in the loaded trees array
-      const treeData = this.environment.loadedTrees.find(treeInfo => treeInfo.mesh === treeMesh);
+      const treeData = this.environment.loadedTrees.find((treeInfo: any) => treeInfo.mesh === treeMesh);
       if (treeData) {
         // Check the tree type index against known apple tree types
         // From environment.js: apple trees are at indices 3, 4, and 8 (env_apple_tree variants)
@@ -737,7 +768,7 @@ export class TreeChoppingSystem {
     if (!isApple && this.environment && this.environment.loadedTrees) {
       // Find trees at same position as this mesh
       const treePosition = treeMesh.position;
-      const matchingTree = this.environment.loadedTrees.find(treeInfo => {
+      const matchingTree = this.environment.loadedTrees.find((treeInfo: any) => {
         const distance = treeInfo.mesh.position.distanceTo(treePosition);
         return distance < 0.1; // Very close position match
       });
@@ -764,7 +795,7 @@ export class TreeChoppingSystem {
     return isApple;
   }
   
-  dropAppleItems(position, quantity) {
+  dropAppleItems(position: THREE.Vector3, quantity: number): void {
     const appleItem = this.itemRegistry['apple'];
     if (!appleItem || !this.itemDropSystem) return;
     
@@ -798,7 +829,7 @@ export class TreeChoppingSystem {
     console.log(`Dropped ${quantity} apples from apple tree`);
   }
   
-  dropWoodItems(position, quantity) {
+  dropWoodItems(position: THREE.Vector3, quantity: number): void {
     const woodItem = this.itemRegistry['wood'];
     if (!woodItem || !this.itemDropSystem) return;
     
