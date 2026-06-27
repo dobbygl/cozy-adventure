@@ -79,7 +79,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/BuildingSaveManager.js`
 - [x] `src/BuildableObjectsRegistry.js`
 - [x] `src/CollisionSystem.js`
-- [ ] `src/CharacterController.js`
+- [x] `src/CharacterController.js`
 - [ ] `src/compass.js`
 - [ ] `src/ItemDropSystem.js`
 - [ ] `src/BuildingPreview.js`
