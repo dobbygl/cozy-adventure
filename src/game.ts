@@ -17,6 +17,7 @@ import { MainMenu } from './MainMenu.js';
 import { SaveSystem } from './SaveSystem.js';
 import { InGameUI } from './InGameUI.js';
 import { LoadingScreen } from './LoadingScreen.js';
+import { randomWorldSeed } from './shared/rng';
 
 export class Game {
   scene: THREE.Scene | null;
@@ -115,7 +116,7 @@ export class Game {
     // Don't initialize the game world yet - wait for user to click "Start Game"
     console.log('Main menu and save system initialized. Game world will load when user starts the game.');
   }
-  async startGame() {
+  async startGame(seed?: number | string) {
     // Create and show loading screen first
     this.loadingScreen = new LoadingScreen();
     this.loadingScreen.setProgress(0, 'Starting game initialization...');
@@ -149,8 +150,12 @@ export class Game {
     // Create environment with collision system
     this.loadingScreen.setProgress(30, 'Creating environment...');
     this.loadingScreen.setTip('Generating trees, rocks, and terrain...');
-    this.environment = new Environment(this.scene!, this.collisionSystem);
+    // Resolve the world seed: a loaded save passes its stored seed; a brand-new
+    // game gets a fresh random one. Either way the layout is deterministic from it.
+    const worldSeed = seed ?? randomWorldSeed();
+    this.environment = new Environment(this.scene!, this.collisionSystem, worldSeed);
     this.environment.create();
+    console.log(`World generated from seed: ${this.environment.seed}`);
     
     this.setupColliders();
     

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { Environment } from '../src/environment.js';
+import { toNumericSeed } from '../src/shared/rng';
 
 type TreePos = { x: number; z: number } | null;
 
@@ -32,5 +33,16 @@ describe('Environment tree placement determinism', () => {
   it('actually places trees (sanity check that the headless path works)', () => {
     const placed = layout('seed-1').filter((p) => p !== null);
     expect(placed.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Environment seed (persistence surface)', () => {
+  it('stores a numeric seed when given a number', () => {
+    expect(new Environment(new THREE.Scene(), null, 42).seed).toBe(42);
+  });
+
+  it('resolves a string seed to its numeric form (the value persisted in saves)', () => {
+    const env = new Environment(new THREE.Scene(), null, 'world-1');
+    expect(env.seed).toBe(toNumericSeed('world-1'));
   });
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ItemStack } from './inventory.js';
+import { DEFAULT_WORLD_SEED } from './shared/rng';
 
 /** Stored save categories keyed by their string id. */
 interface SaveCategories {
@@ -124,6 +125,7 @@ export class SaveSystem {
 
     // Save world state
     gameData.categories[this.saveCategories.WORLD_STATE] = {
+      seed: this.gameInstance.environment?.seed, // world seed: regenerates the same island on load
       dayTime: Date.now() % 86400000, // Time of day in milliseconds
       weather: 'clear', // Future weather system
       gameTime: Date.now() - (this.gameInstance.gameStartTime || Date.now())
@@ -480,9 +482,12 @@ export class SaveSystem {
         return false;
       }
       
-      // Ensure game is started before loading
+      // Ensure game is started before loading. Pass the saved world seed so the
+      // environment regenerates the exact island this save was made on. Old saves
+      // without a seed fall back to the fixed default (their original island).
       if (!this.gameInstance.isGameStarted) {
-        await this.gameInstance.startGame();
+        const savedSeed = saveData?.categories?.[this.saveCategories.WORLD_STATE]?.seed ?? DEFAULT_WORLD_SEED;
+        await this.gameInstance.startGame(savedSeed);
         // Wait a moment for game to fully initialize
         await new Promise(resolve => setTimeout(resolve, 1000));
       }

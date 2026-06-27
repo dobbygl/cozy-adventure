@@ -41,6 +41,24 @@ export const DEFAULT_WORLD_SEED = 'cozy-adventure';
  * same base world.
  */
 export function createWorldRng(seed: number | string = DEFAULT_WORLD_SEED): Rng {
-  const numericSeed = typeof seed === 'number' ? seed : hashSeed(seed);
-  return mulberry32(numericSeed);
+  return mulberry32(toNumericSeed(seed));
+}
+
+/**
+ * Resolve any seed input to the 32-bit unsigned integer actually fed to the PRNG.
+ * Persist THIS value: a saved world reloads to the identical layout regardless of
+ * whether it was originally seeded by number or by string.
+ */
+export function toNumericSeed(seed: number | string = DEFAULT_WORLD_SEED): number {
+  return (typeof seed === 'number' ? seed : hashSeed(seed)) >>> 0;
+}
+
+/**
+ * Pick a fresh random 32-bit seed for a brand-new world. Choosing the seed is a
+ * one-time random act; the world it produces is fully deterministic from that seed
+ * and gets persisted, so the same world reloads identically. This is the one place
+ * Math.random is appropriate: seed selection, not world construction.
+ */
+export function randomWorldSeed(): number {
+  return Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
 }

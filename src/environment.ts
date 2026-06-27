@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { createWorldRng, type Rng } from './shared/rng';
+import { createWorldRng, toNumericSeed, type Rng } from './shared/rng';
 import type { CollisionSystem } from './CollisionSystem.js';
 
 /** A placed tree instance and where it sits. */
@@ -14,6 +14,8 @@ export interface TreeData {
 export class Environment {
   scene: THREE.Scene;
   collisionSystem: CollisionSystem | null;
+  /** The 32-bit numeric seed this world was generated from (persisted in the save). */
+  seed: number;
   rng: Rng;
   treePositions!: { x: number; z: number; scale: number }[];
   loadedTrees!: TreeData[];
@@ -33,7 +35,8 @@ export class Environment {
     this.collisionSystem = collisionSystem;
     // Deterministic world RNG: the same seed always yields the same layout.
     // In multiplayer the server owns this seed; for now it defaults to a fixed one.
-    this.rng = createWorldRng(seed);
+    this.seed = toNumericSeed(seed);
+    this.rng = createWorldRng(this.seed);
   }
 
   create() {
