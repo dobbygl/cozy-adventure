@@ -69,7 +69,7 @@ Un archivo se da por migrado cuando:
 - [ ] `src/SaveSystem.js` (depende de inventory; tiene tests; actualizar `vitest.config.js`)
 
 ### Ola 2 — Hojas puras de lógica (sin deps internas)
-- [ ] `src/WallIntersectionHelper.js`
+- [x] `src/WallIntersectionHelper.js`
 - [ ] `src/HealthSystem.js`
 - [ ] `src/ResourceSystem.js`
 - [ ] `src/FarmingSystem.js`
