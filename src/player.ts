@@ -1,9 +1,29 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 export class Player {
-  constructor(scene) {
+  scene: THREE.Scene;
+  mesh: THREE.Object3D | null;
+  mixer: THREE.AnimationMixer | null;
+  animations: Record<string, THREE.AnimationAction>;
+  currentAction: THREE.AnimationAction | null;
+  isMoving: boolean;
+  moveIntensity: number;
+  heldItemMesh: THREE.Object3D | null;
+  heldItemContainer: THREE.Group | null;
+  debugTracerLine: THREE.Line | null;
+  preloadedAxeModel: THREE.Object3D | null;
+  preloadedAppleModel: THREE.Object3D | null;
+  isPlayingAxeAnimation: boolean;
+  axeHitAction: THREE.AnimationAction | null;
+  handBone: THREE.Object3D | null = null;
+  colliderOffset = 0;
+  // Debug-only reference the original code logs; always undefined.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  player?: any;
+
+  constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.mesh = null;
     this.mixer = null;
@@ -20,7 +40,7 @@ export class Player {
     this.axeHitAction = null;
   }
 
-async load() {
+async load(): Promise<void> {
     return new Promise((resolve, reject) => {
       const loader = new GLTFLoader();
       
@@ -35,7 +55,7 @@ async load() {
           this.setupHeightSlider();
           
           // Enable shadows and make non-reflective
-          this.mesh.traverse((child) => {
+          this.mesh.traverse((child: any) => {
             if (child.isMesh) {
               child.castShadow = true;
               child.receiveShadow = true;
@@ -44,7 +64,7 @@ async load() {
               if (child.material) {
                 if (Array.isArray(child.material)) {
                   // Handle multi-material objects
-                  child.material.forEach(mat => {
+                  child.material.forEach((mat: any) => {
                     if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
                       mat.metalness = 0;
                       mat.roughness = 1;
@@ -117,7 +137,7 @@ async load() {
       this.loadFBXAnimation('assets/Item_Player_Axe_Hit.fbx', 'Player_Axe_Hit'),
     ]);
   }
-  async loadFBXAnimation(url, animationName) {
+  async loadFBXAnimation(url: string, animationName: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const fbxLoader = new FBXLoader();
       
@@ -130,7 +150,7 @@ async load() {
             clip.name = animationName;
             
             // Create action for the FBX animation
-            const action = this.mixer.clipAction(clip);
+            const action = this.mixer!.clipAction(clip);
             this.animations[animationName] = action;
             
             console.log(`Successfully loaded ${animationName} FBX animation`);
@@ -147,13 +167,13 @@ async load() {
       );
     });
   }
-  getAnimationName(fullName) {
+  getAnimationName(fullName: string): string {
     // Extract simple animation name from the full animation path
     const parts = fullName.split('|');
     return parts[parts.length - 1] || fullName;
   }
 
-  playAnimation(animationName, loop = false) {
+  playAnimation(animationName: string, loop = false): void {
     if (!this.animations[animationName]) {
       console.warn(`Animation ${animationName} not found`);
       return;
@@ -167,13 +187,13 @@ async load() {
     // Fade in new animation
     const action = this.animations[animationName];
     action.reset();
-    action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce);
+    action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
     action.fadeIn(0.2);
     action.play();
 
     this.currentAction = action;
   }
-  update(deltaTime, playerController, cameraPosition) {
+  update(deltaTime: number, playerController: any, cameraPosition: THREE.Vector3): void {
     if (this.mixer) {
       this.mixer.update(deltaTime);
     }
@@ -195,12 +215,12 @@ async load() {
       
       // Calculate if camera is behind the player
       const playerToCamera = new THREE.Vector3()
-        .subVectors(cameraPosition, this.mesh.position)
+        .subVectors(cameraPosition, this.mesh!.position)
         .normalize();
       
       // Get player's forward direction (negative Z in local space)
       const playerForward = new THREE.Vector3(0, 0, -1)
-        .applyQuaternion(this.mesh.quaternion);
+        .applyQuaternion(this.mesh!.quaternion);
       
       // Check if camera is behind player (dot product > 0 means camera is behind)
       const isCameraBehind = playerForward.dot(playerToCamera) > 0;
@@ -243,7 +263,7 @@ async load() {
         }
       } else {
         // Standing still - maintain the same scale (always normal, no flipping)
-        this.mesh.scale.x = Math.abs(this.mesh.scale.x); // Always normal scale
+        this.mesh!.scale.x = Math.abs(this.mesh!.scale.x); // Always normal scale
         
         if (wasMoving || !this.currentAction || this.currentAction !== this.animations['Player_Idle']) {
           this.playAnimation('Player_Idle', true);
@@ -279,7 +299,7 @@ async load() {
     this.heldItemContainer = new THREE.Group();
     
     // Try to find the specific hand bone
-    let handBone = null;
+    let handBone: THREE.Object3D | null = null;
     
     // More comprehensive list of possible hand bone names
     const handBoneNames = [
@@ -328,7 +348,7 @@ async load() {
     const allBones = [];
     
     if (this.mesh) {
-      this.mesh.traverse((child) => {
+      this.mesh.traverse((child: any) => {
         if (child.isBone || child.type === 'Bone') {
           allBones.push(child.name);
           
@@ -360,7 +380,7 @@ async load() {
     }
     
     // Always attach to the player mesh instead of hand bone
-    this.mesh.add(this.heldItemContainer);
+    this.mesh!.add(this.heldItemContainer);
     
     // Position the held item container at approximate hand location
     this.heldItemContainer.position.set(0.12, 0.85, 0.25);
@@ -370,12 +390,12 @@ async load() {
     // Store reference for consistency (but not using hand bone)
     this.handBone = handBone;
   }
-  updateHeldItem(itemStack) {
+  updateHeldItem(itemStack: any): void {
     console.log('Updating held item:', itemStack);
     
     // Remove existing held item
     if (this.heldItemMesh) {
-      this.heldItemContainer.remove(this.heldItemMesh);
+      this.heldItemContainer!.remove(this.heldItemMesh);
       this.heldItemMesh = null;
       console.log('Removed previous held item');
     }
@@ -394,7 +414,8 @@ async load() {
     
     // Create mesh based on item type
     const item = itemStack.item;
-    let geometry, material;
+    let geometry: THREE.BufferGeometry;
+    let material: THREE.Material;
     
     console.log('Creating held item for:', item.name, 'type:', item.type);
     
@@ -429,7 +450,7 @@ async load() {
             this.heldItemMesh.position.set(-0.06, 0.02, 0.06);
             this.heldItemMesh.scale.set(0.05, 0.05, 0.05);
             
-            this.heldItemContainer.add(this.heldItemMesh);
+            this.heldItemContainer!.add(this.heldItemMesh);
             console.log('Added preloaded 3D axe model to container (instant)');
             return; // Exit early since we have the model ready
           } else {
@@ -461,7 +482,7 @@ async load() {
             this.heldItemMesh.position.set(0.07, 0.11, 0);
             this.heldItemMesh.rotation.set(180 * Math.PI / 180, 135 * Math.PI / 180, 40 * Math.PI / 180);
             
-            this.heldItemContainer.add(this.heldItemMesh);
+            this.heldItemContainer!.add(this.heldItemMesh);
             console.log('Added preloaded 3D apple model to container (instant)');
             return; // Exit early since we have the model ready
           } else {
@@ -545,14 +566,14 @@ async load() {
       this.heldItemMesh.rotation.set(0, 0, 0);
     }
     
-    this.heldItemContainer.add(this.heldItemMesh);
-    console.log('Added held item to container. Container children:', this.heldItemContainer.children.length);
+    this.heldItemContainer!.add(this.heldItemMesh);
+    console.log('Added held item to container. Container children:', this.heldItemContainer!.children.length);
     console.log('Held item mesh position:', this.heldItemMesh.position);
-    console.log('Container world position:', this.heldItemContainer.getWorldPosition(new THREE.Vector3()));
-    
+    console.log('Container world position:', this.heldItemContainer!.getWorldPosition(new THREE.Vector3()));
+
     // Make sure the held item is visible
     this.heldItemMesh.visible = true;
-    this.heldItemContainer.visible = true;
+    this.heldItemContainer!.visible = true;
     
     // Create debug tracer if it doesn't exist
     if (!this.debugTracerLine) {
@@ -618,7 +639,7 @@ async load() {
       this.heldItemContainer.visible = true;
       
       // Make sure all children (held items) are visible
-      this.heldItemContainer.traverse((child) => {
+      this.heldItemContainer.traverse((child: any) => {
         if (child.isMesh) {
           child.visible = true;
         }
@@ -635,7 +656,7 @@ async load() {
         
         // Convert world position to local position relative to player mesh
         const localPosition = new THREE.Vector3();
-        this.mesh.worldToLocal(localPosition.copy(handWorldPosition));
+        this.mesh!.worldToLocal(localPosition.copy(handWorldPosition));
         
         // Update held item container position
         this.heldItemContainer.position.copy(localPosition);
@@ -646,7 +667,7 @@ async load() {
         
         // Convert world quaternion to local quaternion relative to player mesh
         const playerWorldQuaternion = new THREE.Quaternion();
-        this.mesh.getWorldQuaternion(playerWorldQuaternion);
+        this.mesh!.getWorldQuaternion(playerWorldQuaternion);
         
         // Calculate relative rotation
         const localQuaternion = new THREE.Quaternion();
@@ -690,8 +711,8 @@ async load() {
     this.handBone.getWorldPosition(handBonePosition);
     
     // Get player position for reference
-    let playerPosition = new THREE.Vector3();
-    this.mesh.getWorldPosition(playerPosition);
+    const playerPosition = new THREE.Vector3();
+    this.mesh!.getWorldPosition(playerPosition);
     
     // Calculate relative position from player
     let relativePosition = new THREE.Vector3();
@@ -717,7 +738,7 @@ async load() {
   }
   
   setupHeightSlider() {
-    const slider = document.getElementById('playerHeightSlider');
+    const slider = document.getElementById('playerHeightSlider') as HTMLInputElement | null;
     const valueDisplay = document.getElementById('playerHeightValue');
     
     if (slider && valueDisplay) {
@@ -730,13 +751,14 @@ async load() {
       
       // Add event listener for slider changes
       slider.addEventListener('input', (e) => {
-        const newOffset = parseFloat(e.target.value);
+        const newOffset = parseFloat((e.target as HTMLInputElement).value);
         this.colliderOffset = newOffset;
         valueDisplay.textContent = newOffset.toFixed(1);
         
         // Update the character controller's collider offset if it exists
-        if (window.gameInstance && window.gameInstance.characterController) {
-          window.gameInstance.characterController.colliderOffset = newOffset;
+        const game = (window as any).gameInstance;
+        if (game && game.characterController) {
+          game.characterController.colliderOffset = newOffset;
         }
         
         console.log('Collider offset updated to:', newOffset);
@@ -773,7 +795,7 @@ async load() {
             this.preloadedAxeModel = gltf.scene;
             
             // Configure the model
-            this.preloadedAxeModel.traverse((child) => {
+            this.preloadedAxeModel.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -810,7 +832,7 @@ async load() {
             const axeModel = gltf.scene.clone();
             
             // Configure the model
-            axeModel.traverse((child) => {
+            axeModel.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -846,7 +868,7 @@ async load() {
             const appleModel = gltf.scene.clone();
             
             // Configure the model
-            appleModel.traverse((child) => {
+            appleModel.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -855,7 +877,7 @@ async load() {
                 if (child.material) {
                   if (Array.isArray(child.material)) {
                     // Handle multi-material objects
-                    child.material.forEach(mat => {
+                    child.material.forEach((mat: any) => {
                       if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
                         mat.metalness = 0;
                         mat.roughness = 1;
@@ -900,7 +922,7 @@ async load() {
             this.preloadedAppleModel = gltf.scene;
             
             // Configure the model
-            this.preloadedAppleModel.traverse((child) => {
+            this.preloadedAppleModel.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -909,7 +931,7 @@ async load() {
                 if (child.material) {
                   if (Array.isArray(child.material)) {
                     // Handle multi-material objects
-                    child.material.forEach(mat => {
+                    child.material.forEach((mat: any) => {
                       if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
                         mat.metalness = 0;
                         mat.roughness = 1;
@@ -967,7 +989,7 @@ async load() {
     // Play axe hit animation once
     const axeHitAction = this.animations['Player_Axe_Hit'];
     axeHitAction.reset();
-    axeHitAction.setLoop(THREE.LoopOnce);
+    axeHitAction.setLoop(THREE.LoopOnce, 1);
     axeHitAction.clampWhenFinished = true;
     axeHitAction.fadeIn(0.1);
     axeHitAction.play();
@@ -976,8 +998,8 @@ async load() {
     this.axeHitAction = axeHitAction;
     
     // Set up animation finished callback
-    const mixer = this.mixer;
-    const onAnimationFinished = (event) => {
+    const mixer = this.mixer!;
+    const onAnimationFinished = (event: any) => {
       if (event.action === axeHitAction) {
         // Animation finished, remove lock
         this.isPlayingAxeAnimation = false;

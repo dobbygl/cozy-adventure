@@ -94,7 +94,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/DebugUI.js` (ojo: lee `window.game` inexistente; documentar, no "arreglar" aquí)
 
 ### Ola 4 — Hojas grandes / Three pesado
-- [ ] `src/player.js`
+- [x] `src/player.js`
 - [ ] `src/TreeChoppingSystem.js`
 - [ ] `src/DogCompanion.js`
 
