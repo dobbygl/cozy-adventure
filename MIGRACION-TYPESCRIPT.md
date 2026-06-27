@@ -105,7 +105,7 @@ Un archivo se da por migrado cuando:
 
 ### Ola 6 — Orquestadores (al final, ya con todo tipado debajo)
 - [x] `src/game.js` (importa ~18 módulos)
-- [ ] `src/main.js`
+- [x] `src/main.js`
 
 ### Ola 7 — Controles del playground (vendor; opcional, dejar para el final)
 - [ ] `src/rosieMobileControls.js`

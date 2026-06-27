@@ -1,7 +1,7 @@
 import { Game } from './game.js';
 import { LoadingScreen } from './LoadingScreen.js';
-let loadingScreen;
-let game;
+let loadingScreen: LoadingScreen | null;
+let game: Game | undefined;
 // Initialize the game when the page loads
 async function initGame() {
   try {
@@ -23,8 +23,8 @@ async function initGame() {
     game = new Game();
     
     // Pass loading screen to game for progress updates
-    if (game.setLoadingScreen) {
-      game.setLoadingScreen(loadingScreen);
+    if ((game as any).setLoadingScreen) {
+      (game as any).setLoadingScreen(loadingScreen);
     }
     // Initialize the game with progress tracking
     loadingScreen.setProgress(20, 'Initializing game components...');
@@ -53,7 +53,7 @@ async function initGame() {
     }, 1200);
     gameLoop();
     console.log('Game initialized successfully');
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to initialize game:', error);
     
     // Show error on loading screen
@@ -131,8 +131,8 @@ document.addEventListener('visibilitychange', () => {
 });
 // Handle window resize
 window.addEventListener('resize', () => {
-  if (game && game.handleResize) {
-    game.handleResize();
+  if (game && (game as any).handleResize) {
+    (game as any).handleResize();
   }
 });
 
