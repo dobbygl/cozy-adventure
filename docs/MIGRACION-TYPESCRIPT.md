@@ -8,7 +8,7 @@ reanudar sin perder el hilo.
 
 ## Punto de partida (ya resuelto)
 
-- `src/shared/rng.ts` ya está en TS y sirve de plantilla de estilo (tipos exportados, JSDoc).
+- `packages/shared/rng.ts` ya está en TS y sirve de plantilla de estilo (tipos exportados, JSDoc).
 - `jsconfig.json` con `allowJs`, `checkJs:false` y ahora **`strict:true` + `noImplicitAny:true`**.
 - `@types/three` instalado; `typecheck`, `lint`, `test` y `build` corren en CI.
 - `inventory.js` ya tiene `// @ts-check` y typedefs JSDoc (`SerializedItemStack`, `SerializedInventory`): es el mejor primer objetivo real.

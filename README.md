@@ -122,7 +122,7 @@ The world and its colliders are built by `Environment`, tagged via `userData`, a
 
 ## Roadmap
 
-The project is moving toward a **persistent co-op multiplayer** experience: small groups sharing a world that lives on a server between sessions, deployed standalone (outside the playground iframe) on self-managed AWS. The world becomes server-authoritative, which is why world generation is already deterministic (seeded RNG in `src/shared/rng.ts`). See `docs/PROPUESTA-MULTIJUGADOR.md` for the direction.
+The project is moving toward a **persistent co-op multiplayer** experience: small groups sharing a world that lives on a server between sessions, deployed standalone (outside the playground iframe) on self-managed AWS. The world becomes server-authoritative, which is why world generation is already deterministic (seeded RNG in `packages/shared/rng.ts`). See `docs/PROPUESTA-MULTIJUGADOR.md` for the direction.
 
 ## Resources
 

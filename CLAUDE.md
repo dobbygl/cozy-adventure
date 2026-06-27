@@ -7,13 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a **pnpm monorepo** of three workspaces (package manager pinned via the
 root `packageManager` field; use pnpm, not npm):
 
-- **`@cozy/game`** (`src/game/`): the Three.js + Vite client/game. All the client
-  modules described in this file live under `src/game/src/` (e.g. `src/game/src/game.ts`),
-  with `index.html`, `vite.config.js`, `public/` and `test/` under `src/game/`.
-- **`@cozy/shared`** (`src/shared/`): the **three-free, DOM-safe kernel** shared by
+- **`@cozy/game`** (`apps/game/`): the Three.js + Vite client/game. All the client
+  modules described in this file live under `apps/game/src/` (e.g. `apps/game/src/game.ts`),
+  with `index.html`, `vite.config.js`, `public/` and `test/` under `apps/game/`.
+- **`@cozy/shared`** (`packages/shared/`): the **three-free, DOM-safe kernel** shared by
   game and server — the seeded rng (`rng.ts`) plus the network protocol (`protocol.ts`)
   and state shapes (`state.ts`). Consumed via the `@cozy/shared` workspace import.
-- **`@cozy/server`** (`src/server/`): the authoritative multiplayer server (no `three`);
+- **`@cozy/server`** (`apps/server/`): the authoritative multiplayer server (no `three`);
   see `specs/002-multiplayer-server/`.
 
 ## Commands
@@ -32,10 +32,10 @@ Run a single workspace's script with `pnpm --filter @cozy/<pkg> <script>`.
 
 CI lives in `.github/workflows/`: `ci.yml` runs `lint`, `typecheck`, `test`, and `build`
 across all workspaces with pnpm; `deploy.yml` builds `@cozy/game` and publishes
-`src/game/dist` to GitHub Pages under `/play`. `src/game/vite.config.js` sets a
+`apps/game/dist` to GitHub Pages under `/play`. `apps/game/vite.config.js` sets a
 **relative `base`** so the game works under a sub-path (on GitHub Pages it is served at
 `/<repo>/play/`); otherwise the build stays close to Vite defaults (`publicDir` =
-`src/game/public/`, `outDir` = `src/game/dist/`).
+`apps/game/public/`, `outDir` = `apps/game/dist/`).
 
 A broader improvement proposal (prioritized roadmap, known bugs, scenarios) lives in `docs/PROPUESTA-MEJORAS.md`; the multiplayer direction in `docs/PROPUESTA-MULTIJUGADOR.md`; the (completed) TypeScript migration log in `docs/MIGRACION-TYPESCRIPT.md`.
 
@@ -97,7 +97,7 @@ A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, writte
 - **Inter-system ordering sometimes relies on `setTimeout`** as a sync hack (e.g. in `game.ts`, `DogCompanion`, `BuildingSystem`). These are timing-fragile; if you touch initialization order, prefer awaiting the real load/init events.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/002-multiplayer-server/plan.md` (multiplayer dedicated server: one world per process). Repo target structure is a pnpm monorepo of three workspaces: `@cozy/game` (`src/game/`, the client/game), `@cozy/shared` (`src/shared/`, three-free kernel) and `@cozy/server` (`src/server/`). Migration to it is pending (tasks.md Phase 0).
+Active feature plan: `specs/002-multiplayer-server/plan.md` (multiplayer dedicated server: one world per process). Repo target structure is a pnpm monorepo of three workspaces: `@cozy/game` (`apps/game/`, the client/game), `@cozy/shared` (`packages/shared/`, three-free kernel) and `@cozy/server` (`apps/server/`). Migration to it is pending (tasks.md Phase 0).
 For additional context about technologies, project structure, and design
 decisions, read that plan and its `research.md` / `data-model.md` / `contracts/`.
 <!-- SPECKIT END -->

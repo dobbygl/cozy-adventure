@@ -19,7 +19,7 @@ With no `DATABASE_URL` it uses a non-durable in-memory store — perfect for dev
 ## Self-host with Docker + PostgreSQL
 
 ```bash
-cd src/server
+cd apps/server
 docker compose up --build
 ```
 
@@ -30,7 +30,7 @@ compatible client joins by entering the URL (and password).
 To build just the image (context is the repo root because the server bundles `@cozy/shared`):
 
 ```bash
-docker build -f src/server/Dockerfile -t cozy-server .
+docker build -f apps/server/Dockerfile -t cozy-server .
 ```
 
 ## Configuration (environment)

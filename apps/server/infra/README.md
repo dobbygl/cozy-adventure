@@ -13,7 +13,7 @@ The simplest managed deploy: one container = one world, on a plain Docker host.
 
 ```bash
 # on openclaw
-git clone <repo> && cd cozy-adventure/src/server
+git clone <repo> && cd cozy-adventure/apps/server
 cp .env.example .env        # set SERVER_PASSWORD, MAX_PLAYERS, ...
 docker compose up -d --build
 ```

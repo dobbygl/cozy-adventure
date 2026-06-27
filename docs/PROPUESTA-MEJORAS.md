@@ -17,7 +17,7 @@ Sobre el guardado en cookies: no se trata como bug. El `SaveSystem` ya usa chunk
 
 P0 y P1 completos y commiteados. Queda un único ítem P0 realmente abierto: verificar el comportamiento de storage (cookies / `localStorage` / `Partitioned`) dentro del iframe del host, que exige ejecutar en ese entorno y no se puede comprobar headless.
 
-Hecho además, fuera de las fases originales: generación determinista del mundo (RNG sembrado en `environment.js`, primer módulo TypeScript en `src/shared/rng.ts`). Es el primer prerrequisito de la Fase 0 de multijugador (ver `PROPUESTA-MULTIJUGADOR.md`) y de paso resuelve el hallazgo de `Math.random` en `environment.js`.
+Hecho además, fuera de las fases originales: generación determinista del mundo (RNG sembrado en `environment.js`, primer módulo TypeScript en `packages/shared/rng.ts`). Es el primer prerrequisito de la Fase 0 de multijugador (ver `PROPUESTA-MULTIJUGADOR.md`) y de paso resuelve el hallazgo de `Math.random` en `environment.js`.
 
 Puertas de calidad en verde: lint (warn), typecheck (`strict` activado en `jsconfig`), test (27) y build.
 

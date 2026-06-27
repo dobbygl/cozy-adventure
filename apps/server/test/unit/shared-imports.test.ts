@@ -4,7 +4,7 @@ import { createWorldRng } from '@cozy/shared';
 import type { WorldDocument } from '@cozy/shared';
 
 // Guards the @cozy/shared workspace wiring and the reuse of the client's seeded
-// rng without duplication (server imports the same src/shared/rng.ts).
+// rng without duplication (server imports the same packages/shared/rng.ts).
 describe('shared module wiring', () => {
   it('exposes a numeric protocol version', () => {
     expect(typeof PROTOCOL_VERSION).toBe('number');

@@ -1,7 +1,7 @@
 // Wire protocol shared by client and server. THREE-FREE, DOM-safe, and
 // DEPENDENCY-FREE: the client typechecks this module without `zod` installed, so
 // it carries only types + constants. The runtime validation schemas (zod) live
-// server-side (src/server/src/protocol/schemas.ts), typed against these shapes so
+// server-side (apps/server/src/protocol/schemas.ts), typed against these shapes so
 // the schema and the type cannot drift.
 
 import type {

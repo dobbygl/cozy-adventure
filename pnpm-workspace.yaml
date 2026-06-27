@@ -1,4 +1,3 @@
 packages:
-  - 'src/game'
-  - 'src/shared'
-  - 'src/server'
+  - 'apps/*'
+  - 'packages/*'
