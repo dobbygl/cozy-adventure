@@ -1,42 +1,52 @@
 import * as THREE from 'three';
+import type { Inventory, Item } from './inventory.js';
+
+/** Minimal shape of a buildable definition needed for resource accounting. */
+export interface BuildCostObject {
+  name: string;
+  cost: { wood: number };
+}
 
 export class ResourceSystem {
-  constructor(inventory = null) {
+  inventory: Inventory | null;
+
+  constructor(inventory: Inventory | null = null) {
     this.inventory = inventory;
   }
 
-  setInventory(inventory) {
+  setInventory(inventory: Inventory | null): void {
     this.inventory = inventory;
   }
 
-  hasRequiredResources(buildObject) {
+  hasRequiredResources(buildObject: BuildCostObject | null): boolean {
     if (!this.inventory || !buildObject) return true;
     return this.inventory.hasItem('wood', buildObject.cost.wood);
   }
 
-  consumeResources(buildObject) {
+  consumeResources(buildObject: BuildCostObject | null): void {
     if (!this.inventory || !buildObject) return;
     this.inventory.removeItem('wood', buildObject.cost.wood);
     console.log(`Consumed ${buildObject.cost.wood} wood to build ${buildObject.name}`);
   }
 
-  returnResources(buildObject, wallPosition) {
+  returnResources(buildObject: BuildCostObject | null, wallPosition: THREE.Vector3): void {
     if (!this.inventory || !buildObject) return;
-    
+
     const originalCost = buildObject.cost.wood;
     const returnAmount = Math.floor(originalCost / 2);
-    
+
     if (returnAmount > 0) {
-      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 };
+      // Loose item-like literal; cast to Item since only id/name/stackSize are read downstream.
+      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 } as Item;
       const actualAmountAdded = this.inventory.addItem(woodItem, returnAmount);
-      
+
       if (actualAmountAdded > 0) {
         this.showFloatingText(`+${actualAmountAdded} Wood`, wallPosition, '#4CAF50');
       }
     }
   }
 
-  showResourceWarning(mouse, camera) {
+  showResourceWarning(mouse: THREE.Vector2, _camera?: THREE.Camera): void {
     let warningElement = document.getElementById('resourceWarning');
     if (!warningElement) {
       warningElement = document.createElement('div');
@@ -54,31 +64,31 @@ export class ResourceSystem {
       `;
       document.body.appendChild(warningElement);
     }
-    
+
     warningElement.textContent = 'Not enough resources';
     warningElement.style.display = 'block';
     this.updateWarningPosition(mouse);
   }
 
-  hideResourceWarning() {
+  hideResourceWarning(): void {
     const warningElement = document.getElementById('resourceWarning');
     if (warningElement) {
       warningElement.style.display = 'none';
     }
   }
 
-  updateWarningPosition(mouse) {
+  updateWarningPosition(mouse: THREE.Vector2): void {
     const warningElement = document.getElementById('resourceWarning');
     if (!warningElement || warningElement.style.display === 'none') return;
-    
+
     const mouseX = ((mouse.x + 1) / 2) * window.innerWidth;
     const mouseY = ((-mouse.y + 1) / 2) * window.innerHeight;
-    
-    warningElement.style.left = (mouseX + 15) + 'px';
-    warningElement.style.top = (mouseY - 25) + 'px';
+
+    warningElement.style.left = mouseX + 15 + 'px';
+    warningElement.style.top = mouseY - 25 + 'px';
   }
 
-  showFloatingText(text, worldPosition, color = '#fff') {
+  showFloatingText(text: string, worldPosition: THREE.Vector3, _color = '#fff'): void {
     // Simple floating text implementation
     console.log(`Resource notification: ${text} at position`, worldPosition);
   }
