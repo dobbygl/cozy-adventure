@@ -1,9 +1,20 @@
 import * as THREE from 'three';
 
 export class MainMenu {
-  constructor(gameInstance) {
+  // gameInstance is the Game (game.js, not yet migrated); typed loosely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  gameInstance: any;
+  menuElement!: HTMLDivElement;
+  backgroundScene: THREE.Scene | null;
+  backgroundCamera: THREE.PerspectiveCamera | null;
+  backgroundRenderer: THREE.WebGLRenderer | null;
+  animationId: number | null;
+  isVisible: boolean;
+  floatingElements: THREE.Object3D[] = [];
+  currentModalType?: 'load' | 'save';
+
+  constructor(gameInstance: any) {
     this.gameInstance = gameInstance;
-    this.menuElement = null;
     this.backgroundScene = null;
     this.backgroundCamera = null;
     this.backgroundRenderer = null;
@@ -13,6 +24,11 @@ export class MainMenu {
     this.createMainMenu();
     this.setupBackground();
     this.startBackgroundAnimation();
+  }
+
+  /** Query a required element inside the menu (asserts presence; the markup is static). */
+  qs(selector: string): HTMLElement {
+    return this.menuElement.querySelector<HTMLElement>(selector)!;
   }
 
   createMainMenu() {
@@ -517,7 +533,7 @@ export class MainMenu {
     this.backgroundRenderer.setClearColor(0x87CEEB, 0.3);
     
     // Insert background canvas behind menu
-    const menuBackground = this.menuElement.querySelector('.menu-background');
+    const menuBackground = this.qs('.menu-background');
     menuBackground.appendChild(this.backgroundRenderer.domElement);
     this.backgroundRenderer.domElement.style.position = 'absolute';
     this.backgroundRenderer.domElement.style.top = '0';
@@ -526,12 +542,12 @@ export class MainMenu {
     
     // Add ambient light
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    this.backgroundScene.add(ambientLight);
+    this.backgroundScene!.add(ambientLight);
     
     // Add directional light
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 5, 5);
-    this.backgroundScene.add(directionalLight);
+    this.backgroundScene!.add(directionalLight);
     
     // Create floating cubes for background animation
     this.createFloatingElements();
@@ -588,40 +604,40 @@ export class MainMenu {
         floatOffset: Math.random() * Math.PI * 2
       };
       
-      this.backgroundScene.add(mesh);
+      this.backgroundScene!.add(mesh);
       this.floatingElements.push(mesh);
     }
   }
 
   setupEventListeners() {
     // Start Game button
-    const startBtn = this.menuElement.querySelector('#start-game');
+    const startBtn = this.qs('#start-game');
     startBtn.addEventListener('click', () => {
       this.startGame();
     });
     
     // Continue Game button
-    const continueBtn = this.menuElement.querySelector('#continue-game');
+    const continueBtn = this.qs('#continue-game');
     continueBtn.addEventListener('click', () => {
       this.continueGame();
     });
     
     // Load Game button
-    const loadBtn = this.menuElement.querySelector('#load-game');
+    const loadBtn = this.qs('#load-game');
     loadBtn.addEventListener('click', () => {
       this.showLoadModal();
     });
     
     // Save Game button
-    const saveBtn = this.menuElement.querySelector('#save-game');
+    const saveBtn = this.qs('#save-game');
     saveBtn.addEventListener('click', () => {
       this.showSaveModal();
     });
     
     // Modal event listeners
-    const modal = this.menuElement.querySelector('#save-load-modal');
-    const closeBtn = this.menuElement.querySelector('#close-modal');
-    const cancelBtn = this.menuElement.querySelector('#modal-cancel');
+    const modal = this.qs('#save-load-modal');
+    const closeBtn = this.qs('#close-modal');
+    const cancelBtn = this.qs('#modal-cancel');
     
     closeBtn.addEventListener('click', () => {
       this.hideModal();
@@ -664,7 +680,7 @@ export class MainMenu {
         element.position.y += Math.sin(Date.now() * element.userData.floatSpeed + element.userData.floatOffset) * 0.01;
       });
       
-      this.backgroundRenderer.render(this.backgroundScene, this.backgroundCamera);
+      this.backgroundRenderer!.render(this.backgroundScene!, this.backgroundCamera!);
     };
     
     animate();
@@ -682,10 +698,10 @@ export class MainMenu {
   // Check for existing saves and update UI
   updateMenuState() {
     const saveSlots = this.gameInstance.getSaveSlots();
-    const hasAnySave = saveSlots.some(slot => slot.exists);
+    const hasAnySave = saveSlots.some((slot: any) => slot.exists);
     
     // Show continue button if there are any saves
-    const continueBtn = this.menuElement.querySelector('#continue-game');
+    const continueBtn = this.qs('#continue-game');
     if (hasAnySave) {
       continueBtn.style.display = 'flex';
     } else {
@@ -693,7 +709,7 @@ export class MainMenu {
     }
     
     // Show save button only if game is started
-    const saveBtn = this.menuElement.querySelector('#save-game');
+    const saveBtn = this.qs('#save-game');
     if (this.gameInstance.isGameStarted) {
       saveBtn.style.display = 'flex';
     } else {
@@ -719,8 +735,8 @@ export class MainMenu {
   }
   showLoadModal() {
     this.currentModalType = 'load';
-    const modal = this.menuElement.querySelector('#save-load-modal');
-    const title = this.menuElement.querySelector('#modal-title');
+    const modal = this.qs('#save-load-modal');
+    const title = this.qs('#modal-title');
     
     title.textContent = 'Load Game';
     this.populateSaveSlots();
@@ -728,24 +744,24 @@ export class MainMenu {
   }
   showSaveModal() {
     this.currentModalType = 'save';
-    const modal = this.menuElement.querySelector('#save-load-modal');
-    const title = this.menuElement.querySelector('#modal-title');
+    const modal = this.qs('#save-load-modal');
+    const title = this.qs('#modal-title');
     
     title.textContent = 'Save Game';
     this.populateSaveSlots();
     modal.style.display = 'flex';
   }
   hideModal() {
-    const modal = this.menuElement.querySelector('#save-load-modal');
+    const modal = this.qs('#save-load-modal');
     modal.style.display = 'none';
   }
   populateSaveSlots() {
-    const slotsContainer = this.menuElement.querySelector('#save-slots');
+    const slotsContainer = this.qs('#save-slots');
     const saveSlots = this.gameInstance.getSaveSlots();
     
     slotsContainer.innerHTML = '';
     
-    saveSlots.forEach(slot => {
+    saveSlots.forEach((slot: any) => {
       const slotElement = document.createElement('div');
       slotElement.className = `save-slot ${slot.exists ? '' : 'empty'}`;
       
@@ -793,13 +809,13 @@ export class MainMenu {
     this.setupSlotEventListeners();
   }
   setupSlotEventListeners() {
-    const loadBtns = this.menuElement.querySelectorAll('.load-btn');
-    const deleteBtns = this.menuElement.querySelectorAll('.delete');
+    const loadBtns = this.menuElement.querySelectorAll<HTMLElement>('.load-btn');
+    const deleteBtns = this.menuElement.querySelectorAll<HTMLElement>('.delete');
     
     loadBtns.forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const slotNumber = parseInt(btn.dataset.slot);
+        const slotNumber = parseInt(btn.dataset.slot!);
         
         if (this.currentModalType === 'save') {
           this.saveGame(slotNumber);
@@ -812,12 +828,12 @@ export class MainMenu {
     deleteBtns.forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const slotNumber = parseInt(btn.dataset.slot);
+        const slotNumber = parseInt(btn.dataset.slot!);
         this.deleteSave(slotNumber);
       });
     });
   }
-  async saveGame(slotNumber) {
+  async saveGame(slotNumber: number): Promise<void> {
     if (!this.gameInstance.isGameStarted) {
       alert('You must start a game before you can save!');
       return;
@@ -840,7 +856,7 @@ export class MainMenu {
       this.showMessage('Failed to save game. Please try again.', 'error');
     }
   }
-  async loadGame(slotNumber) {
+  async loadGame(slotNumber: number): Promise<void> {
     try {
       const success = await this.gameInstance.loadGame(slotNumber);
       if (success) {
@@ -858,7 +874,7 @@ export class MainMenu {
       this.showMessage('Failed to load game. The save file may be corrupted.', 'error');
     }
   }
-  deleteSave(slotNumber) {
+  deleteSave(slotNumber: number): void {
     if (confirm(`Are you sure you want to delete Slot ${slotNumber + 1}? This action cannot be undone.`)) {
       try {
         const success = this.gameInstance.deleteSave(slotNumber);
@@ -877,7 +893,7 @@ export class MainMenu {
       }
     }
   }
-  formatPlayTime(milliseconds) {
+  formatPlayTime(milliseconds: number): string {
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -890,7 +906,7 @@ export class MainMenu {
       return `${seconds}s`;
     }
   }
-  showMessage(text, type = 'info') {
+  showMessage(text: string, type = 'info'): void {
     // Create temporary message element
     const message = document.createElement('div');
     message.className = `menu-message ${type}`;

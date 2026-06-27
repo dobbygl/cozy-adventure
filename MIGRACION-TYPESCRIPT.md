@@ -90,7 +90,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/InGameUI.js`
 - [x] `src/BuildingUI.js`
 - [x] `src/inventoryUI.js` (ya tiene JSDoc)
-- [ ] `src/MainMenu.js`
+- [x] `src/MainMenu.js`
 - [ ] `src/DebugUI.js` (ojo: lee `window.game` inexistente; documentar, no "arreglar" aquí)
 
 ### Ola 4 — Hojas grandes / Three pesado
