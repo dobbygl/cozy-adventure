@@ -7,7 +7,8 @@
     ".": "./index.ts",
     "./rng": "./rng.ts",
     "./protocol": "./protocol.ts",
-    "./state": "./state.ts"
+    "./state": "./state.ts",
+    "./worldState": "./worldState.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
