@@ -1,21 +1,50 @@
+import * as THREE from 'three';
+import type { Inventory, Item } from './inventory.js';
+
+/** Minimal shape of a buildable definition used for resource accounting. */
+interface BuildableDef {
+  name: string;
+  cost: { wood: number };
+}
+
+/** Result of returning resources when a wall is broken. */
+export interface ResourceReturnResult {
+  success: boolean;
+  amountAdded: number;
+  expectedAmount: number;
+  originalCost: number;
+}
+
+/** Anything exposing a DOM element (renderer/controls); only domElement is read. */
+interface CameraLike {
+  domElement?: HTMLElement;
+}
+
 export class BuildingResourceManager {
-  constructor(buildableObjects, inventory = null) {
+  buildableObjects: Record<string, BuildableDef>;
+  inventory: Inventory | null;
+  itemRegistry: Record<string, Item> | null;
+
+  constructor(
+    buildableObjects: Record<string, BuildableDef>,
+    inventory: Inventory | null = null
+  ) {
     this.buildableObjects = buildableObjects;
     this.inventory = inventory;
     this.itemRegistry = null;
   }
 
   // Method to set inventory reference
-  setInventory(inventory) {
+  setInventory(inventory: Inventory | null): void {
     this.inventory = inventory;
   }
 
   // Method to set item registry reference for resource returns
-  setItemRegistry(itemRegistry) {
+  setItemRegistry(itemRegistry: Record<string, Item> | null): void {
     this.itemRegistry = itemRegistry;
   }
 
-  hasRequiredResources(selectedBuildObject) {
+  hasRequiredResources(selectedBuildObject: string): boolean {
     if (!this.inventory) return true; // If no inventory system, allow building
 
     const currentBuildObject = this.buildableObjects[selectedBuildObject];
@@ -24,7 +53,7 @@ export class BuildingResourceManager {
     return this.inventory.hasItem('wood', requiredCost.wood);
   }
 
-  consumeResources(selectedBuildObject) {
+  consumeResources(selectedBuildObject: string): void {
     if (!this.inventory) return;
 
     const currentBuildObject = this.buildableObjects[selectedBuildObject];
@@ -34,7 +63,7 @@ export class BuildingResourceManager {
     console.log(`Consumed ${requiredCost.wood} wood to build ${currentBuildObject.name}`);
   }
 
-  returnResources(wall) {
+  returnResources(wall: THREE.Object3D): ResourceReturnResult | undefined {
     if (!this.inventory || !wall.userData.isBuildingWall) return;
 
     // Default to regular wall for resource return
@@ -52,8 +81,8 @@ export class BuildingResourceManager {
     console.log(`  Current wood in inventory BEFORE: ${this.inventory.getItemCount('wood')}`);
 
     if (returnAmount > 0) {
-      // Create a simple wood item directly since itemRegistry might not be working
-      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 };
+      // Loose item-like literal; cast to Item since only id/name/stackSize are read downstream.
+      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 } as Item;
 
       console.log(`  About to add ${returnAmount} wood to inventory...`);
 
@@ -67,20 +96,22 @@ export class BuildingResourceManager {
         success: actualAmountAdded === returnAmount,
         amountAdded: actualAmountAdded,
         expectedAmount: returnAmount,
-        originalCost: originalCost
+        originalCost: originalCost,
       };
     } else {
-      console.log(`No resources returned for breaking ${buildObject.name} (original cost was ${originalCost}, half rounds to 0)`);
+      console.log(
+        `No resources returned for breaking ${buildObject.name} (original cost was ${originalCost}, half rounds to 0)`
+      );
       return {
         success: true,
         amountAdded: 0,
         expectedAmount: 0,
-        originalCost: originalCost
+        originalCost: originalCost,
       };
     }
   }
 
-  showResourceWarning(mouse, camera) {
+  showResourceWarning(mouse: THREE.Vector2, camera: CameraLike): void {
     // Show cursor-following red text warning
     let warningElement = document.getElementById('resourceWarning');
     if (!warningElement) {
@@ -107,14 +138,18 @@ export class BuildingResourceManager {
     this.updateCursorWarningPosition(mouse, camera, warningElement);
   }
 
-  hideResourceWarning() {
+  hideResourceWarning(): void {
     const warningElement = document.getElementById('resourceWarning');
     if (warningElement) {
       warningElement.style.display = 'none';
     }
   }
 
-  updateCursorWarningPosition(mouse, camera, warningElement = null) {
+  updateCursorWarningPosition(
+    mouse: THREE.Vector2,
+    camera: CameraLike,
+    warningElement: HTMLElement | null = null
+  ): void {
     const element = warningElement || document.getElementById('resourceWarning');
     if (!element || element.style.display === 'none') return;
 
@@ -123,7 +158,8 @@ export class BuildingResourceManager {
     const mouseX = ((mouse.x + 1) / 2) * window.innerWidth;
     const mouseY = ((-mouse.y + 1) / 2) * window.innerHeight;
 
-    element.style.left = (mouseX + 15) + 'px'; // 15px offset to right
-    element.style.top = (mouseY - 25) + 'px';  // 25px offset above
+    element.style.left = mouseX + 15 + 'px'; // 15px offset to right
+    element.style.top = mouseY - 25 + 'px'; // 25px offset above
+    void rect; // computed for parity with the original; intentionally unused
   }
 }

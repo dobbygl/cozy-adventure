@@ -74,7 +74,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/ResourceSystem.js`
 - [x] `src/FarmingSystem.js`
 - [x] `src/ItemUseSystem.js`
-- [ ] `src/BuildingResourceManager.js`
+- [x] `src/BuildingResourceManager.js`
 - [ ] `src/LevelManager.js`
 - [ ] `src/BuildingSaveManager.js`
 - [ ] `src/BuildableObjectsRegistry.js`
