@@ -104,7 +104,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/environment.js` (depende de `shared/rng` ✓)
 
 ### Ola 6 — Orquestadores (al final, ya con todo tipado debajo)
-- [ ] `src/game.js` (importa ~18 módulos)
+- [x] `src/game.js` (importa ~18 módulos)
 - [ ] `src/main.js`
 
 ### Ola 7 — Controles del playground (vendor; opcional, dejar para el final)

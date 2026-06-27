@@ -19,6 +19,41 @@ import { InGameUI } from './InGameUI.js';
 import { LoadingScreen } from './LoadingScreen.js';
 
 export class Game {
+  scene: THREE.Scene | null;
+  camera: THREE.PerspectiveCamera | null;
+  renderer: THREE.WebGLRenderer | null;
+  player: Player | null;
+  characterController: ThirdPersonCharacterController | null;
+  environment: Environment | null;
+  inventory: Inventory | null;
+  inventoryUI: InventoryUI | null;
+  collisionSystem: CollisionSystem | null;
+  buildingSystem: BuildingSystem | null;
+  debugUI: DebugUI | null;
+  treeChoppingSystem: TreeChoppingSystem | null;
+  itemDropSystem: ItemDropSystem | null;
+  healthSystem: HealthSystem | null;
+  itemUseSystem: ItemUseSystem | null;
+  dogCompanion: DogCompanion | null;
+  pickupableItems: THREE.Object3D[];
+  pickupPrompt: HTMLDivElement | null;
+  nearestPickupableItem: THREE.Object3D | null;
+  lastPromptPosition: { x: number; y: number };
+  targetPromptPosition: { x: number; y: number };
+  promptLerpSpeed: number;
+  promptUpdateFrameCount: number;
+  clock: THREE.Clock;
+  compass: Compass;
+  mainMenu: MainMenu | null;
+  isGameStarted: boolean;
+  isPaused: boolean;
+  saveSystem: SaveSystem | null;
+  gameStartTime: number;
+  inGameUI: InGameUI | null;
+  loadingScreen: LoadingScreen | null;
+  /** Built in createSampleItems() during startGame(), before any read. */
+  itemRegistry!: Record<string, Item>;
+
   constructor() {
     this.scene = null;
     this.camera = null;
@@ -64,7 +99,7 @@ export class Game {
     this.loadingScreen = null;
     
     // Store game instance globally for slider access
-    window.gameInstance = this;
+    (window as any).gameInstance = this;
   }
 
   async init() {
@@ -109,12 +144,12 @@ export class Game {
     // Initialize collision system first
     this.loadingScreen.setProgress(20, 'Initializing collision system...');
     this.loadingScreen.setTip('Setting up physics and collisions...');
-    this.collisionSystem = new CollisionSystem(this.scene);
+    this.collisionSystem = new CollisionSystem(this.scene!);
     
     // Create environment with collision system
     this.loadingScreen.setProgress(30, 'Creating environment...');
     this.loadingScreen.setTip('Generating trees, rocks, and terrain...');
-    this.environment = new Environment(this.scene, this.collisionSystem);
+    this.environment = new Environment(this.scene!, this.collisionSystem);
     this.environment.create();
     
     this.setupColliders();
@@ -122,7 +157,7 @@ export class Game {
     // Create and load player
     this.loadingScreen.setProgress(40, 'Loading player character...');
     this.loadingScreen.setTip('Preparing your character and animations...');
-    this.player = new Player(this.scene);
+    this.player = new Player(this.scene!);
     await this.player.load();
     
     // Initialize controllers
@@ -162,7 +197,7 @@ export class Game {
     await this.initializeDogCompanion();
     
     // Debug: Log scene contents
-    console.log('Scene children after adding items:', this.scene.children.length);
+    console.log('Scene children after adding items:', this.scene!.children.length);
     console.log('Pickupable items array length:', this.pickupableItems.length);
     
     // Create pickup UI prompt
@@ -255,28 +290,28 @@ export class Game {
   initializeControllers() {
     // Initialize the new character controller
     this.characterController = new ThirdPersonCharacterController(
-      this.player.mesh,
-      this.camera,
-      this.renderer
+      this.player!.mesh!,
+      this.camera!,
+      this.renderer!
     );
     
     // Pass collision system to character controller
     if (this.collisionSystem) {
       this.characterController.setCollisionSystem(this.collisionSystem);
       // Set player mesh reference for debug visualization
-      this.collisionSystem.setPlayerMesh(this.player.mesh);
+      this.collisionSystem.setPlayerMesh(this.player!.mesh!);
     }
   }
   setupColliders() {
     // Find and register all collision objects in the scene
-    this.scene.traverse((child) => {
+    this.scene!.traverse((child) => {
       if (child.userData && child.userData.isCollider) {
         console.log('Registering collider:', child.name || 'unnamed', 'type:', child.userData.colliderType);
-        this.collisionSystem.addCollider(child);
+        this.collisionSystem!.addCollider(child);
       }
     });
-    
-    console.log(`Registered ${this.collisionSystem.colliders.length} colliders for ground collision`);
+
+    console.log(`Registered ${this.collisionSystem!.colliders.length} colliders for ground collision`);
   }
   initializeInventory() {
     // Create inventory system
@@ -301,7 +336,7 @@ export class Game {
     
     // Also trigger initial held item update
     setTimeout(() => {
-      const initialItem = this.inventory.getSelectedItem();
+      const initialItem = this.inventory!.getSelectedItem();
       console.log('Setting initial held item:', initialItem);
       if (this.player && this.player.mesh) {
         this.player.updateHeldItem(initialItem);
@@ -326,10 +361,10 @@ createSampleItems() {
   }
 addSampleItemsToInventory() {
     // Add starting items
-    this.inventory.addItem(this.itemRegistry['axe'], 1);
-    
+    this.inventory!.addItem(this.itemRegistry['axe'], 1);
+
     // Select the first slot so player starts holding the axe
-    this.inventory.selectHotbarSlot(0);
+    this.inventory!.selectHotbarSlot(0);
   }
   createPickupPrompt() {
     // Create floating UI element for pickup prompt
@@ -349,9 +384,9 @@ addSampleItemsToInventory() {
   }
   setupEventListeners() {
     window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.camera!.aspect = window.innerWidth / window.innerHeight;
+      this.camera!.updateProjectionMatrix();
+      this.renderer!.setSize(window.innerWidth, window.innerHeight);
     });
     // Add pickup interaction (E key)
     document.addEventListener('keydown', (e) => {
@@ -371,7 +406,7 @@ addSampleItemsToInventory() {
     if (!this.nearestPickupableItem || !this.player || !this.inventory) return;
     
     // Check distance between player and nearest item
-    const playerPosition = this.player.mesh.position;
+    const playerPosition = this.player.mesh!.position;
     const itemPosition = this.nearestPickupableItem.position;
     const distance = playerPosition.distanceTo(itemPosition);
     
@@ -389,7 +424,7 @@ addSampleItemsToInventory() {
         
         if (addedAmount > 0) {
           // Remove item from scene if successfully picked up
-          this.scene.remove(this.nearestPickupableItem);
+          this.scene!.remove(this.nearestPickupableItem);
           
           // Remove from pickupable items array
           const index = this.pickupableItems.indexOf(this.nearestPickupableItem);
@@ -416,20 +451,20 @@ addSampleItemsToInventory() {
   updatePickupPrompt() {
     if (!this.player || !this.pickupPrompt || this.pickupableItems.length === 0) return;
     
-    const playerPosition = this.player.mesh.position;
+    const playerPosition = this.player.mesh!.position;
     const pickupRange = 2.5;
     
     // First, validate that all items in pickupableItems array still exist in the scene
     this.validatePickupableItems();
     
     // If we have a currently targeted item, validate it still exists before proceeding
-    if (this.nearestPickupableItem && !this.scene.children.includes(this.nearestPickupableItem)) {
+    if (this.nearestPickupableItem && !this.scene!.children.includes(this.nearestPickupableItem)) {
       console.log(`🚫 Currently targeted item ${this.nearestPickupableItem.userData?.itemId} no longer exists - clearing UI`);
       this.nearestPickupableItem = null;
       this.pickupPrompt.style.opacity = '0';
       // Clear any world pickup prompts for this item too
       if (this.inventoryUI) {
-        this.inventoryUI.cleanupWorldPickupPrompts(this.nearestPickupableItem?.userData?.itemId || 'unknown');
+        this.inventoryUI.cleanupWorldPickupPrompts((this.nearestPickupableItem as any)?.userData?.itemId || 'unknown');
       }
     }
     
@@ -442,7 +477,7 @@ addSampleItemsToInventory() {
     
     for (const item of this.pickupableItems) {
       // Double-check that item still exists in scene before processing
-      if (!this.scene.children.includes(item)) {
+      if (!this.scene!.children.includes(item)) {
         console.log(`🚫 Item ${item.userData?.itemId} no longer in scene, skipping`);
         continue;
       }
@@ -466,7 +501,7 @@ addSampleItemsToInventory() {
     
     if (nearestItem) {
       // Double-check that the nearest item still exists in the scene before showing UI
-      if (!this.scene.children.includes(nearestItem)) {
+      if (!this.scene!.children.includes(nearestItem)) {
         console.log(`🚫 Nearest item ${nearestItem.userData?.itemId} no longer in scene - hiding UI`);
         this.pickupPrompt.style.opacity = '0';
         this.nearestPickupableItem = null;
@@ -490,7 +525,7 @@ addSampleItemsToInventory() {
       );
       
       // Project to screen coordinates
-      itemWorldPosition.project(this.camera);
+      itemWorldPosition.project(this.camera!);
       
       // Convert normalized device coordinates to screen pixels
       const targetX = (itemWorldPosition.x * 0.5 + 0.5) * window.innerWidth;
@@ -518,7 +553,7 @@ addSampleItemsToInventory() {
     
     // Filter out items that are no longer in the scene
     this.pickupableItems = this.pickupableItems.filter(item => {
-      const stillExists = this.scene.children.includes(item);
+      const stillExists = this.scene!.children.includes(item);
       if (!stillExists) {
         console.log(`🧹 Removing non-existent item ${item.userData?.itemId} from pickupableItems array`);
       }
@@ -531,7 +566,7 @@ addSampleItemsToInventory() {
     }
     
     // If current nearest item no longer exists, clear it
-    if (this.nearestPickupableItem && !this.scene.children.includes(this.nearestPickupableItem)) {
+    if (this.nearestPickupableItem && !this.scene!.children.includes(this.nearestPickupableItem)) {
       console.log(`🚫 Clearing nearest item reference - item no longer exists`);
       this.nearestPickupableItem = null;
       
@@ -557,11 +592,11 @@ addSampleItemsToInventory() {
       
       // Update player animations and held item position
       if (this.player) {
-        this.player.update(deltaTime, this.characterController, this.camera.position);
+        this.player.update(deltaTime, this.characterController, this.camera!.position);
       }
-      
+
       // Update compass
-      this.compass.update(this.camera);
+      this.compass.update(this.camera!);
       
       // Update pickup UI
       this.updatePickupPrompt();
@@ -673,7 +708,7 @@ addSampleItemsToInventory() {
   async initializeBuildingSystem() {
     try {
       console.log('Initializing building system...');
-      this.buildingSystem = new BuildingSystem(this.scene, this.camera, this.collisionSystem, this.inventory);
+      this.buildingSystem = new BuildingSystem(this.scene!, this.camera!, this.collisionSystem!, this.inventory);
       await this.buildingSystem.init();
       
       // Set player reference for grid following
@@ -691,8 +726,8 @@ addSampleItemsToInventory() {
       
       // Test the building system
       setTimeout(() => {
-        console.log('Building system test - isBuilding:', this.buildingSystem.isBuilding);
-        console.log('Building system test - gridHelper:', this.buildingSystem.gridHelper);
+        console.log('Building system test - isBuilding:', this.buildingSystem!.isBuilding);
+        console.log('Building system test - gridHelper:', this.buildingSystem!.gridHelper);
       }, 1000);
     } catch (error) {
       console.error('Failed to initialize building system:', error);
@@ -700,18 +735,18 @@ addSampleItemsToInventory() {
   }
   
   initializeItemDropSystem() {
-    this.itemDropSystem = new ItemDropSystem(this.scene);
+    this.itemDropSystem = new ItemDropSystem(this.scene!);
     console.log('Item drop system initialized');
   }
   
   initializeTreeChoppingSystem() {
     this.treeChoppingSystem = new TreeChoppingSystem(
-      this.scene,
-      this.camera,
-      this.inventory,
+      this.scene!,
+      this.camera!,
+      this.inventory!,
       this.itemRegistry,
       this.environment,
-      this.itemDropSystem
+      this.itemDropSystem!
     );
     
     // Set player reference for proximity-based tree chopping
@@ -741,7 +776,7 @@ addSampleItemsToInventory() {
 async initializeDogCompanion() {
     try {
       console.log('Initializing dog companion...');
-      this.dogCompanion = new DogCompanion(this.scene, this.player);
+      this.dogCompanion = new DogCompanion(this.scene!, this.player);
       await this.dogCompanion.load();
       
       // Position dog near player initially
@@ -759,7 +794,7 @@ async initializeDogCompanion() {
         console.log('Dog companion mesh visible:', this.dogCompanion.mesh.visible);
         console.log('Dog companion position:', this.dogCompanion.mesh.position);
         console.log('Dog companion scale:', this.dogCompanion.mesh.scale);
-        console.log('Scene children count after adding dog:', this.scene.children.length);
+        console.log('Scene children count after adding dog:', this.scene!.children.length);
       }
       
       console.log('Dog companion loaded and positioned successfully');
@@ -776,36 +811,36 @@ async initializeDogCompanion() {
     const fallbackDog = new THREE.Mesh(geometry, material);
     
     fallbackDog.position.set(
-      this.player.mesh.position.x - 2,
-      this.player.mesh.position.y + 0.15,
-      this.player.mesh.position.z - 2
+      this.player!.mesh!.position.x - 2,
+      this.player!.mesh!.position.y + 0.15,
+      this.player!.mesh!.position.z - 2
     );
     fallbackDog.castShadow = true;
     fallbackDog.receiveShadow = true;
-    
-    this.scene.add(fallbackDog);
+
+    this.scene!.add(fallbackDog);
     console.log('Fallback dog created at position:', fallbackDog.position);
   }
   // Save/Load methods for external access
-  saveGame(slotNumber = 0) {
+  saveGame(slotNumber: number = 0): boolean {
     if (this.saveSystem) {
       return this.saveSystem.saveGame(slotNumber);
     }
     return false;
   }
-  async loadGame(slotNumber = 0) {
+  async loadGame(slotNumber: number = 0): Promise<boolean> {
     if (this.saveSystem) {
       return await this.saveSystem.loadGame(slotNumber);
     }
     return false;
   }
-  getSaveSlots() {
+  getSaveSlots(): any[] {
     if (this.saveSystem) {
       return this.saveSystem.getSaveSlots();
     }
     return [];
   }
-  deleteSave(slotNumber) {
+  deleteSave(slotNumber: number): boolean {
     if (this.saveSystem) {
       return this.saveSystem.deleteSave(slotNumber);
     }
