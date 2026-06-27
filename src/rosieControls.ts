@@ -1,11 +1,47 @@
 import * as THREE from 'three';
 import { MobileControls } from './rosieMobileControls.js';
 
+/** Tunable movement parameters for {@link PlayerController}. */
+interface PlayerControllerOptions {
+  moveSpeed?: number;
+  runSpeed?: number;
+  jumpForce?: number;
+  gravity?: number;
+  groundLevel?: number;
+}
+
+/** Tunable parameters for {@link ThirdPersonCameraController}. */
+interface ThirdPersonCameraOptions {
+  distance?: number;
+  height?: number;
+  rotationSpeed?: number;
+}
+
+/** Tunable parameters for {@link FirstPersonCameraController}. */
+interface FirstPersonCameraOptions {
+  eyeHeight?: number;
+  mouseSensitivity?: number;
+}
+
 /**
  * PlayerController - Handles player movement and physics
  */
 class PlayerController {
-  constructor(player, options = {}) {
+  player: THREE.Object3D;
+  moveSpeed: number;
+  runSpeed: number;
+  jumpForce: number;
+  gravity: number;
+  groundLevel: number;
+  velocity: THREE.Vector3;
+  isOnGround: boolean;
+  canJump: boolean;
+  keys: Record<string, boolean>;
+  cameraMode: string;
+  isRunning: boolean;
+  mobileControls: MobileControls | null;
+
+  constructor(player: THREE.Object3D, options: PlayerControllerOptions = {}) {
     this.player = player;
 
     // Configuration
@@ -38,7 +74,7 @@ class PlayerController {
     });
   }
 
-  setCameraMode(mode) {
+  setCameraMode(mode: string) {
     this.cameraMode = mode;
   }
 
@@ -48,7 +84,7 @@ class PlayerController {
    * @param {number} cameraRotation The current horizontal rotation (yaw) of the active camera.
    * @param {THREE.Vector3} cameraPosition The current position of the camera.
    */
-  update(deltaTime, cameraRotation, cameraPosition) {
+  update(deltaTime: number, cameraRotation: number, cameraPosition: THREE.Vector3) {
     // Apply gravity
     // Check if the player's base (accounting for model offset) is above ground
     // Player model is positioned at y = -0.5, so the actual base is at player.position.y + 0.5
@@ -194,7 +230,27 @@ class PlayerController {
  * ThirdPersonCameraController - Handles third-person camera positioning and rotation
  */
 class ThirdPersonCameraController {
-  constructor(camera, target, domElement, options = {}) {
+  camera: THREE.Camera;
+  target: THREE.Object3D;
+  domElement: HTMLElement;
+  distance: number;
+  height: number;
+  rotationSpeed: number;
+  minVerticalAngle: number;
+  maxVerticalAngle: number;
+  horizontalRotation: number;
+  verticalRotation: number;
+  isDragging: boolean;
+  enabled: boolean;
+  /** Last pointer position; only set once dragging starts (guarded by isDragging). */
+  mousePosition!: { x: number; y: number };
+
+  constructor(
+    camera: THREE.Camera,
+    target: THREE.Object3D,
+    domElement: HTMLElement,
+    options: ThirdPersonCameraOptions = {}
+  ) {
     this.camera = camera;
     this.target = target;
     this.domElement = domElement;
@@ -238,7 +294,7 @@ class ThirdPersonCameraController {
     });
     // Touch controls for mobile (only if mobile)
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      let touchStart = null;
+      let touchStart: { x: number; y: number } | null = null;
       
       this.domElement.addEventListener('touchstart', (e) => {
         if (!this.enabled || e.touches.length !== 1) return;
@@ -310,7 +366,23 @@ class ThirdPersonCameraController {
  * FirstPersonCameraController - Handles first-person camera controls
  */
 class FirstPersonCameraController {
-  constructor(camera, player, domElement, options = {}) {
+  camera: THREE.Camera;
+  player: THREE.Object3D;
+  domElement: HTMLElement;
+  eyeHeight: number;
+  mouseSensitivity: number;
+  enabled: boolean;
+  rotationY: number;
+  rotationX: number;
+  /** Saved per-mesh visibility while the player model is hidden in first-person. */
+  originalVisibility?: { object: THREE.Object3D; visible: boolean }[] | null;
+
+  constructor(
+    camera: THREE.Camera,
+    player: THREE.Object3D,
+    domElement: HTMLElement,
+    options: FirstPersonCameraOptions = {}
+  ) {
     this.camera = camera;
     this.player = player;
     this.domElement = domElement;
@@ -348,10 +420,10 @@ class FirstPersonCameraController {
 
     // Touch controls for mobile (only if mobile)
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      let touchStart = null;
+      let touchStart: { x: number; y: number } | null = null;
       
       // Helper function to check if touch is over mobile UI elements
-      const isTouchOverMobileUI = (touch) => {
+      const isTouchOverMobileUI = (touch: Touch) => {
         const element = document.elementFromPoint(touch.clientX, touch.clientY);
         return element && (
           element.id === 'mobile-game-controls' ||
@@ -421,9 +493,9 @@ class FirstPersonCameraController {
   hidePlayer() {
     // Store current player model visibility state
     this.originalVisibility = [];
-    this.player.traverse(child => {
+    this.player.traverse((child: any) => {
       if (child.isMesh) {
-        this.originalVisibility.push({
+        this.originalVisibility!.push({
           object: child,
           visible: child.visible
         });

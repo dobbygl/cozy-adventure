@@ -109,7 +109,7 @@ Un archivo se da por migrado cuando:
 
 ### Ola 7 — Controles del playground (vendor; opcional, dejar para el final)
 - [x] `src/rosieMobileControls.js`
-- [ ] `src/rosieControls.js` (depende de rosieMobileControls)
+- [x] `src/rosieControls.js` (depende de rosieMobileControls)
 
 ### Fase final — Cierre del entorno
 - [ ] Convertir tests a TS: `test/inventory.test.js`, `test/saveSystem.test.js`, `test/setup.js`.
