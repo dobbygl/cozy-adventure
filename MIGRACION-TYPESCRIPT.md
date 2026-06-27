@@ -86,7 +86,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/BuildingAnimations.js`
 
 ### Ola 3 — Hojas con DOM/UI pesado (más `any`, document/style)
-- [ ] `src/LoadingScreen.js`
+- [x] `src/LoadingScreen.js`
 - [ ] `src/InGameUI.js`
 - [ ] `src/BuildingUI.js`
 - [ ] `src/inventoryUI.js` (ya tiene JSDoc)
