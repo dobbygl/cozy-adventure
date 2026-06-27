@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mulberry32, hashSeed, createWorldRng } from '../src/shared/rng';
+import { mulberry32, hashSeed, createWorldRng } from '@cozy/shared';
 
 describe('mulberry32', () => {
   it('is deterministic: same seed produces the same sequence', () => {

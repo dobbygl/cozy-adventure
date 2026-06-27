@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { Environment } from '../src/environment.js';
-import { toNumericSeed } from '../src/shared/rng';
+import { toNumericSeed } from '@cozy/shared';
 
 type TreePos = { x: number; z: number } | null;
 

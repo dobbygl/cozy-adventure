@@ -21,22 +21,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       # Quality gate: a failing test suite blocks the deploy.
-      - run: npm test
-      # Game build -> ./dist (base './' makes it work under any sub-path).
-      - run: npm run build
+      - run: pnpm -r run test
+      # Game build -> src/game/dist (base './' makes it work under any sub-path).
+      - run: pnpm --filter @cozy/game build
       # Assemble the published site: landing (web/) at the root, game in /play.
       - name: Assemble site (landing at root + game in /play)
         run: |
           rm -rf site && mkdir -p site
           cp -rT web site
           rm -rf site/play && mkdir -p site/play
-          cp -rT dist site/play
+          cp -rT src/game/dist site/play
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

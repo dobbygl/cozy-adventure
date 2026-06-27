@@ -2,19 +2,40 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Monorepo layout (pnpm)
+
+This is a **pnpm monorepo** of three workspaces (package manager pinned via the
+root `packageManager` field; use pnpm, not npm):
+
+- **`@cozy/game`** (`src/game/`): the Three.js + Vite client/game. All the client
+  modules described in this file live under `src/game/src/` (e.g. `src/game/src/game.ts`),
+  with `index.html`, `vite.config.js`, `public/` and `test/` under `src/game/`.
+- **`@cozy/shared`** (`src/shared/`): the **three-free, DOM-safe kernel** shared by
+  game and server — the seeded rng (`rng.ts`) plus the network protocol (`protocol.ts`)
+  and state shapes (`state.ts`). Consumed via the `@cozy/shared` workspace import.
+- **`@cozy/server`** (`src/server/`): the authoritative multiplayer server (no `three`);
+  see `specs/002-multiplayer-server/`.
+
 ## Commands
 
 ```bash
-npm install        # install deps (Vite + Three.js)
-npm run dev        # Vite dev server with HMR
-npm run build      # production build to dist/
-npm run preview    # serve the built dist/ locally
-npm run typecheck  # tsc -p tsconfig.json (strict, noEmit)
-npm run test       # Vitest run (also: test:watch, coverage)
-npm run lint       # ESLint (lint:fix autofixes); format / format:check use Prettier
+pnpm install                       # install all workspaces
+pnpm -r run typecheck              # typecheck every workspace (hard gate)
+pnpm -r run test                   # run tests (game + server)
+pnpm -r run build                  # build game (vite) + server (tsup)
+pnpm -r run lint                   # ESLint (warn mode for game/shared)
+pnpm --filter @cozy/game dev       # Vite dev server with HMR
+pnpm --filter @cozy/server dev     # server (tsx watch, in-memory store, no DB needed)
 ```
 
-CI lives in `.github/workflows/`: `ci.yml` runs `lint`, `typecheck`, `test`, and `build`; `deploy.yml` publishes the build. `vite.config.js` sets a **relative `base`** so the game works under a sub-path (on GitHub Pages it is served at `/<repo>/play/`); otherwise the build stays close to Vite defaults (`publicDir` = `public/`, `outDir` = `dist/`).
+Run a single workspace's script with `pnpm --filter @cozy/<pkg> <script>`.
+
+CI lives in `.github/workflows/`: `ci.yml` runs `lint`, `typecheck`, `test`, and `build`
+across all workspaces with pnpm; `deploy.yml` builds `@cozy/game` and publishes
+`src/game/dist` to GitHub Pages under `/play`. `src/game/vite.config.js` sets a
+**relative `base`** so the game works under a sub-path (on GitHub Pages it is served at
+`/<repo>/play/`); otherwise the build stays close to Vite defaults (`publicDir` =
+`src/game/public/`, `outDir` = `src/game/dist/`).
 
 A broader improvement proposal (prioritized roadmap, known bugs, scenarios) lives in `docs/PROPUESTA-MEJORAS.md`; the multiplayer direction in `docs/PROPUESTA-MULTIJUGADOR.md`; the (completed) TypeScript migration log in `docs/MIGRACION-TYPESCRIPT.md`.
 

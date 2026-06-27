@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ItemStack } from './inventory.js';
-import { DEFAULT_WORLD_SEED } from './shared/rng';
+import { DEFAULT_WORLD_SEED } from '@cozy/shared';
 import { getSelectedPlayerModel, setSelectedPlayerModel } from './playerModel.js';
 
 /** Stored save categories keyed by their string id. */

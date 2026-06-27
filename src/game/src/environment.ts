@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { createWorldRng, toNumericSeed, type Rng } from './shared/rng';
+import { createWorldRng, toNumericSeed, type Rng } from '@cozy/shared';
 import type { CollisionSystem } from './CollisionSystem.js';
 
 /** A placed tree instance and where it sits. */

@@ -1,3 +1,4 @@
 packages:
+  - 'src/game'
   - 'src/shared'
   - 'src/server'

@@ -17,7 +17,7 @@ import { MainMenu } from './MainMenu.js';
 import { SaveSystem } from './SaveSystem.js';
 import { InGameUI } from './InGameUI.js';
 import { LoadingScreen } from './LoadingScreen.js';
-import { randomWorldSeed } from './shared/rng';
+import { randomWorldSeed } from '@cozy/shared';
 import { InputSchemeManager } from './input/scheme.js';
 import { TouchInput } from './input/touch.js';
 import { TouchControls } from './input/TouchControls.js';

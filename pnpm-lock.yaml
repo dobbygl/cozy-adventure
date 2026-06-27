@@ -6,8 +6,13 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  src/game:
     dependencies:
+      '@cozy/shared':
+        specifier: workspace:*
+        version: link:../shared
       three:
         specifier: 0.185.0
         version: 0.185.0

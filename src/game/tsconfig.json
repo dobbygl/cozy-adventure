@@ -16,5 +16,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.js", "src/**/*.ts", "vite.config.js", "vitest.config.js"],
-  "exclude": ["node_modules", "dist", "public", "coverage", "src/server"]
+  "exclude": ["node_modules", "dist", "public", "coverage"]
 }
