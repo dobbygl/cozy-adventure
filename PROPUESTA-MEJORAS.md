@@ -4,7 +4,7 @@
 
 Este informe parte de una aclaración que conviene dejar por delante para no vender humo. El encargo pedía "evaluar usar Vite", pero Vite ya está integrado y funcionando: `npm install` y `npm run build` salen con código 0, el bundle se genera correctamente. Lo que no existe es un `vite.config.*` (el build usa los valores por defecto). Así que la pregunta real no es "¿migramos a Vite?", sino "¿qué configuración explícita le falta a un Vite que ya está ahí?". Lo mismo pasa con varias cosas que se intuyen pendientes: el repo ya aplica buenos patrones en algunos sitios (descomposición por responsabilidad en el subsistema de construcción, inyección de dependencias en el constructor de `Game`, el pin exacto de `three`), solo que de forma desigual.
 
-La segunda pieza del marco es la priorización, y aquí la honestidad pesa más que la exhaustividad. El código viene exportado de un playground de IA, vive en una ruta `/dobbygl/` y el git user es `dobbygl`, no un correo corporativo de NCC. Esas señales apuntan a prototipo o experimento personal más que a producto mantenido. No es una certeza, así que el informe no decide por el lector: plantea dos escenarios y prioriza distinto en cada uno.
+La segunda pieza del marco es la priorización, y aquí la honestidad pesa más que la exhaustividad. El código viene exportado de un playground de IA, vive en una ruta `/dobbygl/` y el git user es `dobbygl`, no un correo corporativo. Esas señales apuntan a prototipo o experimento personal más que a producto mantenido. No es una certeza, así que el informe no decide por el lector: plantea dos escenarios y prioriza distinto en cada uno.
 
 - Escenario A, prototipo o experimento personal: minimizar inversión. Unos pocos quick wins de robustez y de developer experience, y poco más. Migrar las ~17,9k líneas a TypeScript o cubrirlas de tests es mala inversión cuando el coste de mantenimiento lo paga una sola persona que ya tiene el modelo mental completo.
 - Escenario B, producto que se va a mantener y evolucionar: las apuestas grandes se amortizan. TypeScript incremental, base de tests, refactor de los monolitos, CI y pre-commit dejan de ser opcionales en cuanto entra una segunda persona a tocar el código.
@@ -12,6 +12,18 @@ La segunda pieza del marco es la priorización, y aquí la honestidad pesa más 
 Hay un tercer bloque que no depende de esa distinción: la robustez y el rendimiento. El juego no se pausa al ocultar la pestaña, la animación del agua recomputa normales de 16k vértices por frame sin parada, hay ~108 colliders invisibles generando draw calls y las animaciones del jugador se cargan en serie bloqueando el arranque. Eso degrada la experiencia de jugar en cualquier escenario y conviene atacarlo siempre.
 
 Sobre el guardado en cookies: no se trata como bug. El `SaveSystem` ya usa chunking porque hay un tope duro de 4096 bytes por cookie, ya tiene fallback a `localStorage` y usa `SameSite=None;Secure;Partitioned`. La acción correcta es verificar el comportamiento de storage dentro del iframe del host antes de prescribir una migración a IndexedDB, no asumir que la elección de cookies está mal.
+
+## Estado de avance (actualizado 2026-06-27)
+
+P0 y P1 completos y commiteados. Queda un único ítem P0 realmente abierto: verificar el comportamiento de storage (cookies / `localStorage` / `Partitioned`) dentro del iframe del host, que exige ejecutar en ese entorno y no se puede comprobar headless.
+
+Hecho además, fuera de las fases originales: generación determinista del mundo (RNG sembrado en `environment.js`, primer módulo TypeScript en `src/shared/rng.ts`). Es el primer prerrequisito de la Fase 0 de multijugador (ver `PROPUESTA-MULTIJUGADOR.md`) y de paso resuelve el hallazgo de `Math.random` en `environment.js`.
+
+Puertas de calidad en verde: lint (warn), typecheck (`strict` activado en `jsconfig`), test (27) y build.
+
+Con la apuesta de producto/multijugador confirmada, el P2 ya no se ataca de arriba a abajo: se reordena en "prerrequisito de Fase 0" y "diferible", como marca cada ítem más abajo.
+
+Leyenda: ✅ hecho · ⏳ abierto · 🔜 ahora (prerrequisito multijugador) · 🔄 continuo · ⏭️ diferible.
 
 ## Estado actual (diagnóstico)
 
@@ -186,38 +198,43 @@ Este bloque mezcla cosas que aplican siempre (robustez y rendimiento, que degrad
 
 La secuencia importa: lint y formato antes que tipos, `vite.config` y lazy-load pronto, tests sobre lógica pura antes de refactorizar monolitos.
 
-### P0, quick wins (días, aplican casi siempre)
+### P0, quick wins (días, aplican casi siempre) — ✅ completo
 
-1. `window.game` -> `window.gameInstance` en DebugUI (arregla bug).
-2. `@import` de fuente vendorizado en `inventoryUI.js:42` (rotura bajo CSP).
-3. `treeCollider.visible=false` (~108 draw calls fuera).
-4. `pause()/resume()` reales y cancelación del rAF.
-5. Paralelizar la carga FBX con `Promise.all`.
-6. Guarda null en `getElementById('gameContainer')`.
-7. `vite.config.js`: el `esbuild drop:['console']` (A y B) es lo que justifica el P0; el `sourcemap`/`manualChunks` que lo acompaña es afinado de escenario B en el mismo archivo. Resolver de paso el conflicto de import de `inventory.js`.
-8. `.nvmrc`, `engines`, `.prettierrc`, `.editorconfig`, README mínimo, corregir `index.html` y `copilot-instructions.md`.
+1. ✅ `window.game` -> `window.gameInstance` en DebugUI (arregla bug).
+2. ✅ `@import` de fuente vendorizado en `inventoryUI.js:42` (rotura bajo CSP). Nota: el CSS vendorizado no existe en el checkout, la fuente cae a sans-serif de forma consistente.
+3. ✅ `treeCollider.visible=false` (~108 draw calls fuera).
+4. ✅ `pause()/resume()` reales (congelan clock y olas, clamp de delta). El rAF no se cancela: el navegador ya lo throttlea con la pestaña oculta.
+5. ✅ Paralelizar la carga FBX con `Promise.all`.
+6. ✅ Guarda null en `getElementById('gameContainer')`.
+7. ✅ `vite.config.js` (drop de `console.log/info/debug` en prod, sourcemap, chunk limit) + conflicto de import de `inventory.js` resuelto.
+8. ✅ `.nvmrc`, `engines`, `.prettierrc`, `.editorconfig`, README mínimo, `index.html` (title). `copilot-instructions.md` no se toca (eliminado por decisión del usuario).
+- ⏳ Verificar el comportamiento de storage (cookies) en el iframe del host. Único P0 abierto; necesita el entorno real.
 
-### P1, base barata (semanas, pronto si hay más de una mano)
+### P1, base barata (semanas, pronto si hay más de una mano) — ✅ completo
 
-9. ESLint flat config en modo warn + scripts npm de calidad.
-10. CI mínimo (`npm ci` + lint + build en Linux).
-11. Vitest aislado + primeros tests de `inventory.js` y de los helpers JSON del `SaveSystem` (incluido el de `1e+30`).
-12. Tipar el formato de guardado (interfaces + versionado).
-13. `jsconfig.json` con `checkJs` opt-in por archivo; `@types/three` + `typescript` instalados.
-14. Bucle de olas (subdivisión menor o cada N frames).
+9. ✅ ESLint flat config en modo warn + scripts npm de calidad.
+10. ✅ CI mínimo (`npm ci` + lint + typecheck + test + build, Node 20 y 22).
+11. ✅ Vitest aislado + tests de `inventory.js` y de los helpers JSON del `SaveSystem` (incluido el de `1e+30`).
+12. ✅ Tipar el formato de guardado (typedefs `SerializedInventory`/`SerializedItemStack` + `@ts-check`). El versionado en runtime queda **diferido** (cambio sensible para compatibilidad de partidas, con sign-off aparte).
+13. ✅ `jsconfig.json` con `checkJs` opt-in por archivo; `@types/three` + `typescript` instalados.
+14. ✅ Bucle de olas (subdivisión 128→64).
 
-### P2, apuestas grandes (trimestres, solo producto mantenido)
+### P2, apuestas grandes — reordenado por la apuesta de multijugador
 
-15. Tests de `CollisionSystem` y extracción de `gridMath.js` con sus tests.
-16. Trocear `inventoryUI.js` (empezando por `ItemPreviewRenderer`), luego el resto de monolitos.
-17. `ModelLoader` + `AnimatedActor` compartidos; inyección de dependencias en vez de `window.*`; sustituir los `setTimeout` de sincronización.
-18. Convertir FBX a glTF con gltf-transform; `InstancedMesh` para árboles y costa.
-19. `destroy()` simétrico con AbortController; manejo de pérdida de contexto WebGL (este último es A y B por jugabilidad, pero se agrupa aquí porque su parte `restored` depende del inventario de recursos del `destroy()`; el listener `webglcontextlost` con `preventDefault` puede adelantarse a P0 si se quiere).
-20. Rename incremental `.js` -> `.ts` (lógica pura primero, monolitos al final), con strict global como cierre.
-21. husky + lint-staged; endurecer postMessage (origin allowlist); i18n y accesibilidad si se publica.
-22. Spec Kit solo como prueba acotada en una feature nueva, no global.
+Bajo la dirección de producto/multijugador (ver `PROPUESTA-MULTIJUGADOR.md`), el P2 deja de ser secuencial: parte pasa a prerrequisito de la Fase 0 (🔜 ahora) y el resto queda diferible (⏭️).
+
+15. 🔜 Tests de `CollisionSystem` y extracción de `gridMath.js` con sus tests (el servidor valida movimiento con la guarda anti-teleport; `gridMath` sale al trocear `BuildingSystem`).
+16. 🔜 Trocear `BuildingSystem` (prereq para convertir mutaciones de mundo en comandos) · ⏭️ `inventoryUI.js` y resto de UI (estado por jugador, no crítico para la red).
+17. 🔜 Inyección de dependencias en vez de `window.*` (el `NetworkSystem` entra por DI) y `ModelLoader`/`AnimatedActor` compartidos (para `RemotePlayer`). Sustituir los `setTimeout` de sincronización, en paralelo.
+18. ⏭️ Convertir FBX a glTF con gltf-transform; `InstancedMesh` para árboles y costa (rendimiento, no bloquea multijugador).
+19. 🔜 `destroy()` simétrico con AbortController (reconexión/cambio de sala sin fugar listeners) + manejo de pérdida de contexto WebGL.
+20. 🔄 Rename incremental `.js` -> `.ts` — en marcha: lo nuevo (RNG, capa de red) en TS, `@ts-check` al tocar módulos. `strict` global ya activado en `jsconfig`.
+21. ⏭️ husky + lint-staged; endurecer postMessage (menos relevante en standalone); i18n y accesibilidad si se publica.
+22. ⏭️ Spec Kit solo como prueba acotada en una feature nueva, no global.
 
 ## Tabla resumen priorizada
+
+> Nota: esta tabla es la priorización original. El estado vigente (hecho / abierto / reordenado por multijugador) está en "Estado de avance" y en la hoja de ruta de arriba. P0 y P1 están completos salvo la verificación de storage en el host.
 
 | Mejora | Área | Esfuerzo | Impacto | Prioridad | Escenario |
 |---|---|---|---|---|---|
