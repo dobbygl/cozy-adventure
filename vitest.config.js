@@ -6,7 +6,7 @@ export default defineConfig({
     // can opt in per-file with: // @vitest-environment jsdom
     environment: 'node',
     include: ['test/**/*.test.{js,ts}'],
-    setupFiles: ['./test/setup.js'],
+    setupFiles: ['./test/setup.ts'],
     coverage: {
       provider: 'v8',
       // Report coverage only for the modules under test, so the number is honest

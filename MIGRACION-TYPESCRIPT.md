@@ -112,7 +112,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/rosieControls.js` (depende de rosieMobileControls)
 
 ### Fase final — Cierre del entorno
-- [ ] Convertir tests a TS: `test/inventory.test.js`, `test/saveSystem.test.js`, `test/setup.js`.
+- [x] Convertir tests a TS: `test/inventory.test.js`, `test/saveSystem.test.js`, `test/setup.js`.
 - [ ] Renombrar `jsconfig.json` → `tsconfig.json` y ajustar script `typecheck` (`tsc -p tsconfig.json`).
 - [ ] ESLint: añadir `typescript-eslint` para lintar `.ts`; actualizar globs de `lint`/`format`/`coverage` a `{js,ts}`.
 - [ ] Barrido final: reducir `any` provisionales y resolver `// @ts-expect-error` pendientes donde sea barato.
