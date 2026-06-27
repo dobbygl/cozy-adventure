@@ -6,12 +6,25 @@
 /**
  * Utility functions for mobile detection and UI management
  */
+/** DOM elements that make up the on-screen mobile control overlay. */
+interface MobileControlUI {
+  container: HTMLDivElement;
+  joystickContainer: HTMLDivElement;
+  joystickKnob: HTMLDivElement;
+}
+
+/** A normalized joystick reading, each axis in [-1, 1]. */
+interface JoystickInput {
+  x: number;
+  y: number;
+}
+
 const MobileUtils = {
-  isMobile() {
+  isMobile(): boolean {
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   },
 
-  createMobileUI() {
+  createMobileUI(): MobileControlUI {
     // Create container for all mobile controls
     const container = document.createElement('div');
     container.id = 'mobile-game-controls';
@@ -98,7 +111,19 @@ const MobileUtils = {
  * VirtualJoystick - Handles virtual joystick input for mobile
  */
 class VirtualJoystick {
-  constructor(container, knob, onInputChange) {
+  container: HTMLElement;
+  knob: HTMLElement;
+  onInputChange: (input: JoystickInput) => void;
+  isActive: boolean;
+  center: { x: number; y: number };
+  maxDistance: number;
+  currentPos: { x: number; y: number };
+
+  constructor(
+    container: HTMLElement,
+    knob: HTMLElement,
+    onInputChange: (input: JoystickInput) => void
+  ) {
     this.container = container;
     this.knob = knob;
     this.onInputChange = onInputChange;
@@ -111,13 +136,15 @@ class VirtualJoystick {
   }
 
   setupEvents() {
-    const handleStart = (e) => {
+    const handleStart = (e: Event) => {
       e.preventDefault();
       this.isActive = true;
       this.container.style.background = 'rgba(255, 255, 255, 0.3)';
     };
 
-    const handleMove = (e) => {
+    // Bound to both touchmove and mousemove; the touch/mouse union is awkward to
+    // narrow, so the event stays `any` (DOM point per the migration plan).
+    const handleMove = (e: any) => {
       if (!this.isActive) return;
       e.preventDefault();
 
@@ -151,7 +178,7 @@ class VirtualJoystick {
       });
     };
 
-    const handleEnd = (e) => {
+    const handleEnd = (e: Event) => {
       e.preventDefault();
       this.isActive = false;
       this.knob.style.transform = 'translate(-20px, -20px)';
@@ -178,7 +205,13 @@ class VirtualJoystick {
  * MobileControls - Handles mobile player movement controls only
  */
 class MobileControls {
-  constructor(controller) {
+  controller: any;
+  isMobile: boolean;
+  mobileUI?: MobileControlUI | null;
+  virtualJoystick?: VirtualJoystick | null;
+  currentInput?: JoystickInput;
+
+  constructor(controller: any) {
     this.controller = controller;
     this.isMobile = MobileUtils.isMobile();
     
@@ -207,7 +240,7 @@ class MobileControls {
     );
   }
 
-  handleJoystickInput(input) {
+  handleJoystickInput(input: JoystickInput) {
     this.currentInput = input;
     
     // Clear all movement keys first

@@ -108,7 +108,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/main.js`
 
 ### Ola 7 — Controles del playground (vendor; opcional, dejar para el final)
-- [ ] `src/rosieMobileControls.js`
+- [x] `src/rosieMobileControls.js`
 - [ ] `src/rosieControls.js` (depende de rosieMobileControls)
 
 ### Fase final — Cierre del entorno
