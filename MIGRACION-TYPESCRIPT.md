@@ -114,7 +114,7 @@ Un archivo se da por migrado cuando:
 ### Fase final — Cierre del entorno
 - [x] Convertir tests a TS: `test/inventory.test.js`, `test/saveSystem.test.js`, `test/setup.js`.
 - [x] Renombrar `jsconfig.json` → `tsconfig.json` y ajustar script `typecheck` (`tsc -p tsconfig.json`).
-- [ ] ESLint: añadir `typescript-eslint` para lintar `.ts`; actualizar globs de `lint`/`format`/`coverage` a `{js,ts}`.
+- [x] ESLint: añadir `typescript-eslint` para lintar `.ts`; actualizar globs de `lint`/`format`/`coverage` a `{js,ts}`.
 - [ ] Barrido final: reducir `any` provisionales y resolver `// @ts-expect-error` pendientes donde sea barato.
 
 ## Condición de fin (goal)
