@@ -83,7 +83,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/compass.js`
 - [x] `src/ItemDropSystem.js`
 - [x] `src/BuildingPreview.js`
-- [ ] `src/BuildingAnimations.js`
+- [x] `src/BuildingAnimations.js`
 
 ### Ola 3 — Hojas con DOM/UI pesado (más `any`, document/style)
 - [ ] `src/LoadingScreen.js`
