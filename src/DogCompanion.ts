@@ -2,10 +2,43 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export class DogCompanion {
-  constructor(scene, player) {
+  scene: THREE.Scene;
+  player: any;
+  // Assigned in load() (or its fallback); always present by the time AI methods run.
+  mesh!: THREE.Object3D;
+  mixer: THREE.AnimationMixer | null;
+  animations: Record<string, THREE.AnimationAction>;
+  currentAnimation: THREE.AnimationAction | null;
+  currentAnimationName: string | null;
+  followDistance: number;
+  minFollowDistance: number;
+  wanderRadius: number;
+  speed: number;
+  rotationSpeed: number;
+  groundLevel: number;
+  gravity: number;
+  velocity: THREE.Vector3;
+  isOnGround: boolean;
+  state: string;
+  target: any;
+  wanderTarget: THREE.Vector3 | null;
+  wanderTimer: number;
+  wanderCooldown: number;
+  barkTimer: number;
+  barkCooldown: number;
+  fetchedItems: any[];
+  fetchTargets: any[];
+  maxCarryCapacity: number;
+  returnToPlayer: boolean;
+  itemsInMouth: THREE.Mesh[];
+  mouthContainer: THREE.Group | null;
+  loader: GLTFLoader;
+  // Referenced only by the legacy *Delivery() methods; never assigned (stays undefined).
+  fetchTarget?: any;
+
+  constructor(scene: THREE.Scene, player: any) {
     this.scene = scene;
     this.player = player;
-    this.mesh = null;
     this.mixer = null;
     this.animations = {};
     this.currentAnimation = null;
@@ -55,7 +88,7 @@ export class DogCompanion {
       this.mesh.position.set(0, 0, 0);
       
       // Enable shadows
-      this.mesh.traverse((child) => {
+      this.mesh.traverse((child: any) => {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
@@ -67,7 +100,7 @@ export class DogCompanion {
         this.mixer = new THREE.AnimationMixer(this.mesh);
         
         gltf.animations.forEach((clip) => {
-          const action = this.mixer.clipAction(clip);
+          const action = this.mixer!.clipAction(clip);
           this.animations[clip.name] = action;
           console.log('Available animation:', clip.name); // Debug log
         });
@@ -113,7 +146,7 @@ export class DogCompanion {
     }
   }
 
-  playAnimation(animationName) {
+  playAnimation(animationName: string): boolean {
     if (!this.mixer || !this.animations[animationName]) {
       console.log('Animation not found:', animationName, 'Available:', Object.keys(this.animations));
       return false;
@@ -135,7 +168,7 @@ export class DogCompanion {
     return true;
   }
 
-  update(deltaTime, droppedItems = []) {
+  update(deltaTime: number, droppedItems: any[] = []): void {
     if (!this.mesh || !this.player?.mesh) return;
     
     // Update animations
@@ -205,9 +238,9 @@ export class DogCompanion {
       this.barkCooldown = Math.random() * 10 + 5; // 5-15 seconds
     }
   }
-  updatePhysics(deltaTime) {
+  updatePhysics(deltaTime: number): void {
     // Use collision system for proper ground detection if available
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (gameInstance?.collisionSystem) {
       const groundCheck = gameInstance.collisionSystem.checkGroundCollision(
         this.mesh.position, 
@@ -246,7 +279,12 @@ export class DogCompanion {
     }
   }
 
-  updateFollowing(deltaTime, playerPosition, dogPosition, distanceToPlayer) {
+  updateFollowing(
+    deltaTime: number,
+    playerPosition: THREE.Vector3,
+    dogPosition: THREE.Vector3,
+    distanceToPlayer: number
+  ): void {
     if (distanceToPlayer > this.followDistance) {
       // Move towards player
       const direction = new THREE.Vector3()
@@ -281,7 +319,12 @@ export class DogCompanion {
     }
   }
 
-  updateWandering(deltaTime, playerPosition, dogPosition, distanceToPlayer) {
+  updateWandering(
+    deltaTime: number,
+    playerPosition: THREE.Vector3,
+    dogPosition: THREE.Vector3,
+    distanceToPlayer: number
+  ): void {
     // If too far from player, return to following
     if (distanceToPlayer > this.wanderRadius) {
       this.state = 'following';
@@ -295,10 +338,10 @@ export class DogCompanion {
     }
     
     // Move towards wander target
-    const distanceToTarget = dogPosition.distanceTo(this.wanderTarget);
+    const distanceToTarget = dogPosition.distanceTo(this.wanderTarget!);
     if (distanceToTarget > 0.5) {
       const direction = new THREE.Vector3()
-        .subVectors(this.wanderTarget, dogPosition)
+        .subVectors(this.wanderTarget!, dogPosition)
         .normalize();
       
       // Only move horizontally during wandering
@@ -324,7 +367,12 @@ export class DogCompanion {
     }
   }
 
-  updateFetching(deltaTime, playerPosition, dogPosition, droppedItems) {
+  updateFetching(
+    deltaTime: number,
+    playerPosition: THREE.Vector3,
+    dogPosition: THREE.Vector3,
+    droppedItems: any[]
+  ): void {
     // Clean up fetch targets that no longer exist
     this.fetchTargets = this.fetchTargets.filter(target => this.validateItemExists(target, droppedItems));
     
@@ -447,7 +495,12 @@ export class DogCompanion {
     }
   }
 
-  updateIdle(deltaTime, playerPosition, dogPosition, distanceToPlayer) {
+  updateIdle(
+    deltaTime: number,
+    playerPosition: THREE.Vector3,
+    dogPosition: THREE.Vector3,
+    distanceToPlayer: number
+  ): void {
     // Ensure idle animation is playing
     this.tryPlayIdleAnimation();
     
@@ -464,7 +517,7 @@ export class DogCompanion {
     this.wanderCooldown = Math.random() * 10 + 5; // 5-15 seconds before next wander
   }
 
-  setRandomWanderTarget(playerPosition) {
+  setRandomWanderTarget(playerPosition: THREE.Vector3): void {
     const angle = Math.random() * Math.PI * 2;
     const distance = Math.random() * this.wanderRadius * 0.5 + 1;
     
@@ -475,22 +528,22 @@ export class DogCompanion {
     );
   }
 
-  startFetching(item) {
+  startFetching(item: any): void {
     this.state = 'fetching';
     this.fetchTargets = [item]; // Initialize with first item
     this.returnToPlayer = false;
     console.log('Dog started fetching items, starting with:', item.userData?.itemId);
   }
-  addFetchTarget(item) {
+  addFetchTarget(item: any): void {
     if (!this.isAlreadyTargeted(item) && this.fetchTargets.length < this.maxCarryCapacity) {
       this.fetchTargets.push(item);
       console.log('Dog added fetch target:', item.userData?.itemId, 'Total targets:', this.fetchTargets.length);
     }
   }
-  isAlreadyTargeted(item) {
+  isAlreadyTargeted(item: any): boolean {
     return this.fetchTargets.includes(item);
   }
-  findNextFetchTarget(droppedItems, dogPosition) {
+  findNextFetchTarget(droppedItems: any[], dogPosition: THREE.Vector3): any {
     const maxSearchDistance = 200; // EXTREMELY FAR search radius for multiple items
     
     for (const item of droppedItems) {
@@ -503,7 +556,7 @@ export class DogCompanion {
     return null;
   }
   // Check if an item has been on the ground for at least 15 seconds
-  hasItemBeenDroppedLongEnough(item) {
+  hasItemBeenDroppedLongEnough(item: any): boolean {
     if (!item.userData || !item.userData.dropTime) {
       console.log(`⏰ Item ${item.userData?.itemId} has no drop time - assuming it's been there long enough`);
       return true; // If no drop time is recorded, assume it's been there long enough
@@ -526,7 +579,7 @@ export class DogCompanion {
     return isReady;
   }
 
-  findNearestDroppedItem(droppedItems, dogPosition) {
+  findNearestDroppedItem(droppedItems: any[], dogPosition: THREE.Vector3): any {
     let nearestItem = null;
     let nearestDistance = Infinity;
     
@@ -541,11 +594,11 @@ export class DogCompanion {
     return nearestItem;
   }
 
-  itemExists(item, droppedItems) {
+  itemExists(item: any, droppedItems: any[]): boolean {
     return droppedItems.includes(item);
   }
   // Enhanced validation method to ensure items exist in both arrays and scene
-  validateItemExists(item, droppedItems) {
+  validateItemExists(item: any, droppedItems: any[]): boolean {
     if (!item) {
       console.log('🚫 Item validation failed: item is null/undefined');
       return false;
@@ -558,7 +611,7 @@ export class DogCompanion {
     const existsInScene = this.scene.children.includes(item);
     
     // Check if item exists in game's pickupable items array
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     const existsInPickupable = gameInstance?.pickupableItems?.includes(item) || false;
     
     const isValid = existsInDroppedItems && existsInScene;
@@ -584,7 +637,7 @@ export class DogCompanion {
       return false;
     }
     
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventory || !gameInstance?.itemRegistry) {
       console.log('❌ Missing game instance, inventory, or item registry');
       return false;
@@ -666,7 +719,7 @@ forceDeliveryDirectly() {
         return false;
     }
     
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventory) {
         console.log('❌ No game instance or inventory');
         return false;
@@ -685,9 +738,9 @@ forceDeliveryDirectly() {
     
     // Create ItemStack manually
     const ItemStack = class {
-        constructor(item, quantity) {
-            this.item = item;
-            this.quantity = quantity;
+        constructor(item: any, quantity: any) {
+            (this as any).item = item;
+            (this as any).quantity = quantity;
         }
     };
     
@@ -740,7 +793,7 @@ emergencyDelivery() {
         return false;
     }
     
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventory) {
         console.log('❌ No game instance or inventory');
         return false;
@@ -792,7 +845,7 @@ absoluteBruteForceDelivery() {
         return false;
     }
     
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventory || !gameInstance?.itemRegistry) {
         console.log('❌ Missing game instance, inventory, or item registry');
         return false;
@@ -814,10 +867,10 @@ absoluteBruteForceDelivery() {
     for (let i = 0; i < inventory.hotbar.length; i++) {
         if (!inventory.hotbar[i]) {
             // Create ItemStack using the exact same class as the inventory system
-            const ItemStack = window.ItemStack || gameInstance.inventory.constructor.ItemStack || class {
-                constructor(item, quantity) {
-                    this.item = item;
-                    this.quantity = quantity;
+            const ItemStack = (window as any).ItemStack || gameInstance.inventory.constructor.ItemStack || class {
+                constructor(item: any, quantity: any) {
+                    (this as any).item = item;
+                    (this as any).quantity = quantity;
                 }
             };
             
@@ -852,10 +905,10 @@ absoluteBruteForceDelivery() {
     // BRUTE FORCE 2: Try backpack if hotbar failed
     for (let i = 0; i < inventory.backpack.length; i++) {
         if (!inventory.backpack[i]) {
-            const ItemStack = window.ItemStack || gameInstance.inventory.constructor.ItemStack || class {
-                constructor(item, quantity) {
-                    this.item = item;
-                    this.quantity = quantity;
+            const ItemStack = (window as any).ItemStack || gameInstance.inventory.constructor.ItemStack || class {
+                constructor(item: any, quantity: any) {
+                    (this as any).item = item;
+                    (this as any).quantity = quantity;
                 }
             };
             
@@ -882,7 +935,7 @@ absoluteBruteForceDelivery() {
 }
 // NEW METHOD: Nuclear UI update sequence
 performNuclearUIUpdate() {
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance) return;
     
     console.log('💥 Performing nuclear UI update sequence...');
@@ -929,15 +982,15 @@ performNuclearUIUpdate() {
     }
   }
   
-  showDeliveryPopup(deliveredItems, totalDelivered) {
-    const gameInstance = window.gameInstance;
+  showDeliveryPopup(deliveredItems: any[], totalDelivered: number): void {
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventoryUI) {
       console.warn('No inventory UI available for delivery popup');
       return;
     }
     
     // Group items by type for cleaner display
-    const itemSummary = {};
+    const itemSummary: Record<string, { item: any; quantity: number }> = {};
     deliveredItems.forEach(({ item, quantity }) => {
       if (itemSummary[item.id]) {
         itemSummary[item.id].quantity += quantity;
@@ -959,8 +1012,8 @@ performNuclearUIUpdate() {
     }
   }
   
-  showDogDeliveryPopup(item, quantity) {
-    const gameInstance = window.gameInstance;
+  showDogDeliveryPopup(item: any, quantity: number): void {
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventoryUI) return;
     
     // Create a custom popup element similar to pickup popup
@@ -998,8 +1051,8 @@ performNuclearUIUpdate() {
     }, 3000);
   }
   
-  showMultiItemDeliveryPopup(summaryEntries, totalDelivered) {
-    const gameInstance = window.gameInstance;
+  showMultiItemDeliveryPopup(summaryEntries: any[], totalDelivered: number): void {
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventoryUI) return;
     
     // Create a custom popup for multiple items
@@ -1051,7 +1104,7 @@ performNuclearUIUpdate() {
   }
   
   forceInventoryUIUpdate() {
-    const gameInstance = window.gameInstance;
+    const gameInstance = (window as any).gameInstance;
     if (!gameInstance?.inventoryUI) return;
     
     console.log('🔄 Forcing comprehensive inventory UI update');
@@ -1094,7 +1147,7 @@ performNuclearUIUpdate() {
     }, 50);
   }
 
-  rotateTowards(direction, deltaTime) {
+  rotateTowards(direction: THREE.Vector3, deltaTime: number): void {
     if (direction.length() > 0) {
       const targetRotation = Math.atan2(direction.x, direction.z);
       const currentRotation = this.mesh.rotation.y;
@@ -1167,7 +1220,7 @@ performNuclearUIUpdate() {
     console.log('Dog mouth container created');
   }
   
-  async createItemInMouth(itemId) {
+  async createItemInMouth(itemId: string): Promise<void> {
     if (!itemId || !this.mouthContainer) return;
     
     console.log('Creating visual item in dog mouth:', itemId);
@@ -1228,7 +1281,7 @@ performNuclearUIUpdate() {
     console.log(`Total items in mouth: ${this.itemsInMouth.length}`);
   }
   
-  positionItemInMouth(itemMesh, itemIndex) {
+  positionItemInMouth(itemMesh: THREE.Object3D, itemIndex: number): void {
     // Base position in the mouth
     const baseX = 0;
     const baseY = -0.08;
@@ -1263,7 +1316,7 @@ performNuclearUIUpdate() {
         
         // Dispose of geometry and material
         if (itemMesh.geometry) itemMesh.geometry.dispose();
-        if (itemMesh.material) itemMesh.material.dispose();
+        if (itemMesh.material) (itemMesh.material as THREE.Material).dispose();
       }
       
       this.itemsInMouth = [];
@@ -1274,12 +1327,12 @@ performNuclearUIUpdate() {
   removeLatestItemFromMouth() {
     // Remove only the most recently added item (for single item delivery)
     if (this.itemsInMouth.length > 0 && this.mouthContainer) {
-      const latestItem = this.itemsInMouth.pop();
+      const latestItem = this.itemsInMouth.pop()!;
       this.mouthContainer.remove(latestItem);
-      
+
       // Dispose of geometry and material
       if (latestItem.geometry) latestItem.geometry.dispose();
-      if (latestItem.material) latestItem.material.dispose();
+      if (latestItem.material) (latestItem.material as THREE.Material).dispose();
       
       console.log(`Removed latest item from mouth. Remaining: ${this.itemsInMouth.length}`);
       
@@ -1294,34 +1347,34 @@ performNuclearUIUpdate() {
       this.positionItemInMouth(this.itemsInMouth[i], i);
     }
   }
-  removeItemFromGround(targetItem) {
+  removeItemFromGround(targetItem: any): void {
     const itemToRemove = targetItem || this.fetchTarget;
     if (!itemToRemove) return;
     
     console.log('Dog is picking up item - removing item from world');
     
     // Trigger pickup UI fade-out BEFORE removing the item
-    if (window.gameInstance && window.gameInstance.inventoryUI && itemToRemove.userData.itemId) {
-      window.gameInstance.inventoryUI.cleanupWorldPickupPrompts(itemToRemove.userData.itemId);
+    if ((window as any).gameInstance && (window as any).gameInstance.inventoryUI && itemToRemove.userData.itemId) {
+      (window as any).gameInstance.inventoryUI.cleanupWorldPickupPrompts(itemToRemove.userData.itemId);
     }
     
     // Remove item from scene
     this.scene.remove(itemToRemove);
     
     // Remove from game's pickupable items array
-    if (window.gameInstance && window.gameInstance.pickupableItems) {
-      const index = window.gameInstance.pickupableItems.indexOf(itemToRemove);
+    if ((window as any).gameInstance && (window as any).gameInstance.pickupableItems) {
+      const index = (window as any).gameInstance.pickupableItems.indexOf(itemToRemove);
       if (index !== -1) {
-        window.gameInstance.pickupableItems.splice(index, 1);
+        (window as any).gameInstance.pickupableItems.splice(index, 1);
         console.log('Dog removed item from ground:', itemToRemove.userData.itemId);
       }
     }
     
     // Remove from item drop system's tracking array
-    if (window.gameInstance && window.gameInstance.itemDropSystem) {
-      const dropSystemIndex = window.gameInstance.itemDropSystem.droppedItems.indexOf(itemToRemove);
+    if ((window as any).gameInstance && (window as any).gameInstance.itemDropSystem) {
+      const dropSystemIndex = (window as any).gameInstance.itemDropSystem.droppedItems.indexOf(itemToRemove);
       if (dropSystemIndex !== -1) {
-        window.gameInstance.itemDropSystem.droppedItems.splice(dropSystemIndex, 1);
+        (window as any).gameInstance.itemDropSystem.droppedItems.splice(dropSystemIndex, 1);
       }
     }
   }

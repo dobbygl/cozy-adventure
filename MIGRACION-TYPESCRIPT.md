@@ -96,7 +96,7 @@ Un archivo se da por migrado cuando:
 ### Ola 4 — Hojas grandes / Three pesado
 - [x] `src/player.js`
 - [x] `src/TreeChoppingSystem.js`
-- [ ] `src/DogCompanion.js`
+- [x] `src/DogCompanion.js`
 
 ### Ola 5 — Sistemas compuestos
 - [ ] `src/BuildingIntegrationSystem.js` (depende de FarmingSystem ✓)
