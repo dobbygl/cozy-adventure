@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { createWorldRng } from './shared/rng';
 
 export class Environment {
-  constructor(scene, collisionSystem = null) {
+  constructor(scene, collisionSystem = null, seed = undefined) {
     this.scene = scene;
     this.collisionSystem = collisionSystem;
+    // Deterministic world RNG: the same seed always yields the same layout.
+    // In multiplayer the server owns this seed; for now it defaults to a fixed one.
+    this.rng = createWorldRng(seed);
   }
 
   create() {
@@ -91,9 +95,9 @@ export class Environment {
     // Create beach sand mounds for visual interest - even more and larger
     for (let i = 0; i < 32; i++) {
       const angle = (i / 32) * Math.PI * 2;
-      const radius = 122 + Math.random() * 18;
+      const radius = 122 + this.rng() * 18;
       
-      const sandMoundGeometry = new THREE.SphereGeometry(4 + Math.random() * 3, 24, 20);
+      const sandMoundGeometry = new THREE.SphereGeometry(4 + this.rng() * 3, 24, 20);
       const sandMoundMaterial = new THREE.MeshLambertMaterial({ color: 0xf4e4bc });
       const sandMound = new THREE.Mesh(sandMoundGeometry, sandMoundMaterial);
       
@@ -110,10 +114,10 @@ export class Environment {
     
     // Add some rocks along the shore - more rocks for enormous island
     for (let i = 0; i < 28; i++) {
-      const angle = (i / 28) * Math.PI * 2 + Math.random() * 0.5;
-      const radius = 148 + Math.random() * 8;
+      const angle = (i / 28) * Math.PI * 2 + this.rng() * 0.5;
+      const radius = 148 + this.rng() * 8;
       
-      const rockGeometry = new THREE.DodecahedronGeometry(2 + Math.random() * 1.5);
+      const rockGeometry = new THREE.DodecahedronGeometry(2 + this.rng() * 1.5);
       const rockMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
       const rock = new THREE.Mesh(rockGeometry, rockMaterial);
       
@@ -123,9 +127,9 @@ export class Environment {
         Math.sin(angle) * radius
       );
       rock.rotation.set(
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-        Math.random() * Math.PI
+        this.rng() * Math.PI,
+        this.rng() * Math.PI,
+        this.rng() * Math.PI
       );
       rock.castShadow = true;
       rock.receiveShadow = true;
@@ -200,8 +204,8 @@ export class Environment {
     
     while (!validPosition && attempts < 50) {
       // Random position within the island bounds (avoiding center and edges)
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 20 + Math.random() * 80; // Keep trees on the island surface
+      const angle = this.rng() * Math.PI * 2;
+      const radius = 20 + this.rng() * 80; // Keep trees on the island surface
       
       x = Math.cos(angle) * radius;
       z = Math.sin(angle) * radius;
@@ -233,10 +237,10 @@ export class Environment {
       this.treePositions.push({ x: x, z: z, scale: treeConfig.scale });
     
       // Random rotation for natural variation
-      treeClone.rotation.y = Math.random() * Math.PI * 2;
+      treeClone.rotation.y = this.rng() * Math.PI * 2;
       
       // Scale variation for natural look
-      const scaleVariation = 0.8 + Math.random() * 0.4; // 0.8x to 1.2x
+      const scaleVariation = 0.8 + this.rng() * 0.4; // 0.8x to 1.2x
       const finalScale = treeConfig.scale * scaleVariation;
       treeClone.scale.set(finalScale, finalScale, finalScale);
       
