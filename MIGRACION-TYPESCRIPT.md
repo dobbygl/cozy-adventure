@@ -80,7 +80,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/BuildableObjectsRegistry.js`
 - [x] `src/CollisionSystem.js`
 - [x] `src/CharacterController.js`
-- [ ] `src/compass.js`
+- [x] `src/compass.js`
 - [ ] `src/ItemDropSystem.js`
 - [ ] `src/BuildingPreview.js`
 - [ ] `src/BuildingAnimations.js`
