@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-import { getPlayerModelConfig } from './playerModel.js';
+import { getPlayerModelConfig, type PlayerModelId } from './playerModel.js';
 
 export class Player {
   scene: THREE.Scene;
@@ -56,10 +56,12 @@ export class Player {
     this.axeHitAction = null;
   }
 
-async load(): Promise<void> {
+async load(modelId?: PlayerModelId): Promise<void> {
     return new Promise((resolve, reject) => {
       const loader = new GLTFLoader();
-      const modelConfig = getPlayerModelConfig();
+      // modelId lets a RemotePlayer load a peer's chosen body; undefined keeps the
+      // local selection (single-player behavior unchanged).
+      const modelConfig = getPlayerModelConfig(modelId);
 
       loader.load(
         modelConfig.path,
