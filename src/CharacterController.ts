@@ -14,6 +14,7 @@ export class ThirdPersonCharacterController {
   gravity: number;
   jumpForce: number;
   velocity: THREE.Vector3;
+  moveAxis: THREE.Vector2;
   isGrounded: boolean;
   isRunning: boolean;
   jumpKeyWasDown: boolean;
@@ -51,6 +52,9 @@ export class ThirdPersonCharacterController {
 
     // State
     this.velocity = new THREE.Vector3();
+    // Analog touch movement (x = right, y = forward, magnitude 0..1), fed by the
+    // touch layer in src/input. Zero on desktop, where WASD is used instead.
+    this.moveAxis = new THREE.Vector2();
     this.isGrounded = false; // Start with player falling until they hit ground
     this.isRunning = false;
     this.jumpKeyWasDown = false; // Edge-trigger guard so holding Space doesn't auto-rejump
@@ -133,39 +137,19 @@ export class ThirdPersonCharacterController {
       this.mouseInput.y = e.clientY;
     });
 
-    // Touch controls for mobile
-    let touchStartPos: { x: number; y: number } | null = null;
+    // Touch input is handled by src/input/touch.ts (Pointer Events with
+    // per-pointerId tracking, multi-touch), which feeds moveAxis and the camera
+    // angles on this controller. The old single-touch (e.touches.length === 1)
+    // camera handler was removed: it could not support moving and looking at once.
+  }
 
-    this.renderer.domElement.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-        touchStartPos = {
-          x: e.touches[0].clientX,
-          y: e.touches[0].clientY,
-        };
-      }
-    });
-
-    this.renderer.domElement.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && touchStartPos) {
-        e.preventDefault();
-
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - touchStartPos.x;
-        const deltaY = touch.clientY - touchStartPos.y;
-
-        this.cameraAngleH -= deltaX * this.mouseSensitivity * 2;
-        this.cameraAngleV += deltaY * this.mouseSensitivity * 2;
-
-        // Clamp vertical angle
-        this.cameraAngleV = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.cameraAngleV));
-
-        touchStartPos = { x: touch.clientX, y: touch.clientY };
-      }
-    });
-
-    this.renderer.domElement.addEventListener('touchend', () => {
-      touchStartPos = null;
-    });
+  /** Start a jump from an external source (e.g. the touch jump button), mirroring
+   *  the Space-key windup. No-op while airborne or already winding up. */
+  requestJump(): void {
+    if (this.isGrounded && !this.isJumpWindup) {
+      this.isJumpWindup = true;
+      this.jumpWindupTimer = this.jumpPrepTime;
+    }
   }
 
   update(deltaTime: number): void {
@@ -178,26 +162,38 @@ export class ThirdPersonCharacterController {
   }
 
   handleInput(deltaTime: number): void {
-    // Check if running
-    this.isRunning = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
-
-    // Calculate movement direction relative to camera
+    // Analog touch movement (moveAxis) takes precedence over WASD when active,
+    // so the joystick keeps its proportional intensity instead of collapsing to
+    // on/off keys. On desktop moveAxis stays zero and the WASD path runs.
+    const usingAxis = this.moveAxis.lengthSq() > 1e-6;
     const moveDirection = new THREE.Vector3();
+    let intensity = 1;
 
-    if (this.keys['KeyW']) moveDirection.z -= 1;
-    if (this.keys['KeyS']) moveDirection.z += 1;
-    if (this.keys['KeyA']) moveDirection.x -= 1;
-    if (this.keys['KeyD']) moveDirection.x += 1;
+    if (usingAxis) {
+      intensity = Math.min(this.moveAxis.length(), 1);
+      moveDirection.set(this.moveAxis.x, 0, -this.moveAxis.y); // screen-up = forward (-z)
+      this.isRunning = intensity > 0.7; // full push runs (drives the run animation)
+    } else {
+      this.isRunning = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+      if (this.keys['KeyW']) moveDirection.z -= 1;
+      if (this.keys['KeyS']) moveDirection.z += 1;
+      if (this.keys['KeyA']) moveDirection.x -= 1;
+      if (this.keys['KeyD']) moveDirection.x += 1;
+    }
 
-    // Normalize diagonal movement
     if (moveDirection.lengthSq() > 0) {
       moveDirection.normalize();
 
       // Rotate movement direction based on camera angle
       moveDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraAngleH);
 
-      // Apply movement speed
-      const speed = this.isRunning ? this.runSpeed : this.moveSpeed;
+      // Analog scales speed by joystick intensity (full push = runSpeed);
+      // keyboard uses walk/run by Shift.
+      const speed = usingAxis
+        ? this.runSpeed * intensity
+        : this.isRunning
+          ? this.runSpeed
+          : this.moveSpeed;
       this.velocity.x = moveDirection.x * speed;
       this.velocity.z = moveDirection.z * speed;
 

@@ -45,7 +45,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 
 ## What this is
 
-A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, written in **TypeScript (strict) ESM**, ~33 modules / ~18k lines in `src/` (migrated from JavaScript; see `docs/MIGRACION-TYPESCRIPT.md`). It was **exported from an AI playground platform** (hence `src/rosieControls.ts`, `src/rosieMobileControls.ts`, and the host scripts in `public/`). It is designed to run **embedded in a host page inside an iframe** and talks to `window.parent` via `postMessage`, and also runs standalone via the Vite dev server.
+A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, written in **TypeScript (strict) ESM**, ~33 modules / ~18k lines in `src/` (migrated from JavaScript; see `docs/MIGRACION-TYPESCRIPT.md`). It was **exported from an AI playground platform** (hence the host scripts in `public/`). It is designed to run **embedded in a host page inside an iframe** and talks to `window.parent` via `postMessage`, and also runs standalone via the Vite dev server.
 
 ## Architecture (big picture)
 
@@ -54,6 +54,7 @@ A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, writte
 - **Frame loop:** `gameLoop()` in `main.ts` calls `game.update()` then `game.render()` every `requestAnimationFrame`; `update()` is a no-op until `isGameStarted` is true.
 - **World/collision:** `Environment` (`src/environment.ts`) builds scene + terrain and tags colliders via `userData`; `CollisionSystem` (`src/CollisionSystem.ts`) reads those tags. Collider meshes exist for hit-testing, not rendering.
 - **Character:** `ThirdPersonCharacterController` (`src/CharacterController.ts`) handles movement/camera; `Player` (`src/player.ts`) handles animations and held items.
+- **Touch input:** `src/input/` (`scheme.ts` active input scheme, `touch.ts` Pointer-Events adapter feeding the controller's analog `moveAxis` + camera, `TouchControls.ts` the DOM overlay) makes the game playable on touch. It is a thin adapter over the live controller; desktop keyboard/mouse are unchanged and the overlay shows only on touch.
 - **Inventory:** state in `src/inventory.ts`, DOM/CSS-in-JS view in `src/inventoryUI.ts`. UI reacts through callbacks like `onInventoryChange` and `onHotbarSelectionChange`.
 - **Building:** `BuildableObjectsRegistry` (model definitions) + `BuildingSystem` (placement/input, the largest file) + `LevelManager` (multi-level grid) + `BuildingSaveManager` (serialize/restore by registry type). Build-mode keys (in `BuildingSystem`): `V` toggle build mode, `R` rotate, `X` switch build/delete, `C` focus selection.
 - **Saving:** `src/SaveSystem.ts` persists by category (player/inventory/environment/buildings/worldState).
@@ -75,6 +76,7 @@ A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, writte
 - **Inter-system ordering sometimes relies on `setTimeout`** as a sync hack (e.g. in `game.ts`, `DogCompanion`, `BuildingSystem`). These are timing-fragile; if you touch initialization order, prefer awaiting the real load/init events.
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Active feature plan: `specs/001-touch-controls/plan.md` (touch controls for mobile).
+For additional context about technologies, project structure, and design
+decisions, read that plan and its `research.md` / `data-model.md` / `contracts/`.
 <!-- SPECKIT END -->

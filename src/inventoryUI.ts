@@ -443,6 +443,26 @@ this.createBackpack();
         transform: scale(0.95);
       }
 
+      /* Touch: drive the compact hotbar off the input scheme, not viewport width
+         (a landscape phone is wider than the 768px breakpoint, so the media query
+         below never fires there). Slots stay >= 44px touch targets. */
+      body.input-touch .hotbar {
+        gap: 6px;
+        padding: 6px 8px;
+        bottom: 16px;
+        border-width: 2px;
+      }
+      body.input-touch .hotbar-slot {
+        width: 46px;
+        height: 46px;
+        border-width: 2px;
+        border-radius: 12px;
+      }
+      body.input-touch .item-icon {
+        width: 32px;
+        height: 32px;
+      }
+
       /* Mobile responsive */
       @media (max-width: 768px) {
         .hotbar {
@@ -1031,17 +1051,31 @@ document.body.appendChild(this.hotbarElement);
 
   updateHotbar() {
     const hotbarSlots = this.hotbarElement.querySelectorAll<HTMLElement>('.hotbar-slot');
-    
+
     hotbarSlots.forEach((slot, index) => {
       const itemStack = this.inventory.hotbar[index];
       this.updateSlotDisplay(slot, itemStack);
-      
+
       // Update selection state
       if (index === this.inventory.selectedHotbarSlot) {
         slot.classList.add('selected');
       } else {
         slot.classList.remove('selected');
       }
+    });
+
+    // On touch, keep the bar compact by hiding the EMPTY TRAILING slots (gaps in
+    // the middle stay visible). Always show up to the selected slot. On desktop
+    // all nine slots are shown.
+    const touch = typeof document !== 'undefined' && document.body.classList.contains('input-touch');
+    let lastVisible = this.inventory.selectedHotbarSlot;
+    if (touch) {
+      for (let i = 0; i < this.inventory.hotbarSize; i++) {
+        if (this.inventory.hotbar[i]) lastVisible = Math.max(lastVisible, i);
+      }
+    }
+    hotbarSlots.forEach((slot, index) => {
+      slot.style.display = !touch || index <= lastVisible ? '' : 'none';
     });
   }
 

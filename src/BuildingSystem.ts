@@ -1117,7 +1117,7 @@ updateLevelReferences() {
         padding-top: 20px; 
         border-top: 2px solid rgba(222, 184, 135, 0.3);
       ">
-        <p style="margin: 0;">Click to select • <span style="color: #F5DEB3; font-weight: 700;">Esc</span> to close</p>
+        <p class="kbd-hint" style="margin: 0;">Click to select • <span style="color: #F5DEB3; font-weight: 700;">Esc</span> to close</p>
       </div>
     `;
     
@@ -1552,7 +1552,7 @@ updateLevelReferences() {
         ">
           🪵 Cost: ${currentBuildObject.cost.wood} Wood ${hasResources ? '✓' : '✗'}
         </div>
-        <div style="
+        <div class="kbd-hint" style="
           font-size: 12px;
           color: #DEB887;
           font-weight: 500;
@@ -1586,7 +1586,7 @@ updateLevelReferences() {
             font-size: 16px;
           ">${modeIcon} ${modeText} Mode</strong>
         </div>
-        <div style="
+        <div class="kbd-hint" style="
           font-size: 12px;
           color: #DEB887;
           font-weight: 500;

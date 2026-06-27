@@ -18,6 +18,9 @@ import { SaveSystem } from './SaveSystem.js';
 import { InGameUI } from './InGameUI.js';
 import { LoadingScreen } from './LoadingScreen.js';
 import { randomWorldSeed } from './shared/rng';
+import { InputSchemeManager } from './input/scheme.js';
+import { TouchInput } from './input/touch.js';
+import { TouchControls } from './input/TouchControls.js';
 
 export class Game {
   scene: THREE.Scene | null;
@@ -25,6 +28,9 @@ export class Game {
   renderer: THREE.WebGLRenderer | null;
   player: Player | null;
   characterController: ThirdPersonCharacterController | null;
+  inputScheme: InputSchemeManager | null;
+  touchInput: TouchInput | null;
+  touchControls: TouchControls | null;
   environment: Environment | null;
   inventory: Inventory | null;
   inventoryUI: InventoryUI | null;
@@ -61,6 +67,9 @@ export class Game {
     this.renderer = null;
     this.player = null;
     this.characterController = null;
+    this.inputScheme = null;
+    this.touchInput = null;
+    this.touchControls = null;
     this.environment = null;
     this.inventory = null;
     this.inventoryUI = null;
@@ -311,6 +320,29 @@ export class Game {
       // Set player mesh reference for debug visualization
       this.collisionSystem.setPlayerMesh(this.player!.mesh!);
     }
+
+    // Touch input layer: a thin Pointer Events adapter that feeds the live
+    // controller (moveAxis + camera angles). The overlay shows only on touch
+    // devices and follows the last input source used.
+    this.inputScheme = new InputSchemeManager();
+    this.touchControls = new TouchControls({
+      onPickup: () => this.tryPickupItem(),
+      onJump: () => this.characterController?.requestJump(),
+      onBackpack: () => this.inventoryUI?.toggleBackpack(),
+    });
+    this.touchInput = new TouchInput(this.renderer!.domElement, this.characterController, {
+      onJoystick: (state) => this.touchControls!.setJoystick(state),
+    });
+    const applyScheme = (touch: boolean) => {
+      this.touchControls!.setVisible(touch);
+      // Drives CSS that hides keyboard/mouse hints (E / V / 1.. / "Esc to close")
+      // and the compact touch hotbar sizing.
+      document.body.classList.toggle('input-touch', touch);
+      // Re-lay the hotbar so empty trailing slots hide/show for the new scheme.
+      this.inventoryUI?.updateUI();
+    };
+    applyScheme(this.inputScheme.isTouch());
+    this.inputScheme.onChange((scheme) => applyScheme(scheme === 'touch'));
   }
   setupColliders() {
     // Find and register all collision objects in the scene
@@ -610,7 +642,11 @@ addSampleItemsToInventory() {
       
       // Update pickup UI
       this.updatePickupPrompt();
-      
+      // Mirror the pickup prompt into the touch overlay's contextual button.
+      if (this.touchControls) {
+        this.touchControls.setPickupVisible(this.nearestPickupableItem !== null);
+      }
+
       // Update item drop system
       if (this.itemDropSystem) {
         this.itemDropSystem.update();
@@ -639,6 +675,21 @@ addSampleItemsToInventory() {
       
       // The building system does not have a general update loop.
       // Its components are updated based on player actions.
+
+      // Touch build mode: there's no hovering mouse, so aim the placement
+      // preview with the camera (screen centre) every frame and show the action
+      // row. Placement itself is a world tap (the existing build click handler).
+      if (this.buildingSystem) {
+        const building = this.buildingSystem.isBuilding;
+        if (this.touchControls) this.touchControls.setBuildPanelVisible(building);
+        if (building && this.inputScheme?.isTouch()) {
+          this.buildingSystem.updateMousePosition({
+            clientX: window.innerWidth / 2,
+            clientY: window.innerHeight / 2,
+          } as MouseEvent);
+          this.buildingSystem.updatePreview();
+        }
+      }
     }
   }
 
@@ -698,7 +749,12 @@ addSampleItemsToInventory() {
     if (this.characterController) {
       this.characterController.destroy();
     }
-    
+
+    // Clean up touch input layer
+    if (this.touchInput) this.touchInput.destroy();
+    if (this.touchControls) this.touchControls.destroy();
+    if (this.inputScheme) this.inputScheme.destroy();
+
     // Clean up building system
     if (this.buildingSystem) {
       this.buildingSystem.destroy();
@@ -725,7 +781,17 @@ addSampleItemsToInventory() {
       if (this.player) {
         this.buildingSystem.setPlayer(this.player);
       }
-      
+
+      // Wire the touch build controls to the building system (mirrors V/R/X/C).
+      if (this.touchControls) {
+        this.touchControls.setBuildHandlers({
+          onToggle: () => this.buildingSystem!.toggleBuildingMode(),
+          onRotate: () => this.buildingSystem!.rotateWall(),
+          onToggleTool: () => this.buildingSystem!.toggleBuildingTool(),
+          onCenter: () => this.buildingSystem!.showSelectionScreen(),
+        });
+      }
+
       // Set item registry reference for resource returns
       if (this.itemRegistry) {
         this.buildingSystem.setItemRegistry(this.itemRegistry);

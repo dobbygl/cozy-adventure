@@ -116,7 +116,7 @@ export class BuildingUI {
             ${this.generateLevelButtons()}
           </div>
         </div>
-        <div style="
+        <div class="kbd-hint" style="
           font-size: 12px;
           color: #DEB887;
           font-weight: 500;
@@ -177,7 +177,7 @@ export class BuildingUI {
             ${this.generateLevelButtons()}
           </div>
         </div>
-        <div style="
+        <div class="kbd-hint" style="
           font-size: 12px;
           color: #DEB887;
           font-weight: 500;
@@ -467,7 +467,7 @@ export class BuildingUI {
         padding-top: 20px;
         border-top: 2px solid rgba(222, 184, 135, 0.3);
       ">
-        <p style="margin: 0;">Click to select • <span style="color: #F5DEB3; font-weight: 700;">Esc</span> to close</p>
+        <p class="kbd-hint" style="margin: 0;">Click to select • <span style="color: #F5DEB3; font-weight: 700;">Esc</span> to close</p>
       </div>
     `;
 

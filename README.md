@@ -65,6 +65,10 @@ Open the dev server URL in your browser, start a new game from the menu, and you
 > [!TIP]
 > Press `V` at any time to enter build mode, then `X` to flip between placing and removing pieces. On touch devices the on-screen controls replace the keyboard.
 
+### Touch controls
+
+On touch devices a control overlay appears automatically (and hides again on desktop). A floating **virtual joystick** on the left half moves the character with analog intensity, **dragging the right half** orients the camera (both at once), and a quick **tap** in the world chops or uses. A contextual **Recoger** button appears to pick up nearby items, **tapping a hotbar slot** selects it, and the **🔨** button toggles build mode, where **Rotar / Modo / Centrar** act like `R` / `X` / `C` and a tap places the piece where the camera is aimed.
+
 ## Development
 
 The project is plain TypeScript ESM with a small toolchain. The quality gates are expected to stay green before changes land.
