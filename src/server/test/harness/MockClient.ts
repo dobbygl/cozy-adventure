@@ -18,8 +18,37 @@ export class MockClient {
   private inbox: ServerMessage[] = [];
   private waiters: Waiter[] = [];
 
+  private closed = false;
+  private closeWaiters: Array<() => void> = [];
+
   private constructor(private readonly ws: WebSocket) {
     ws.on('message', (data) => this.onMessage(data.toString()));
+    ws.on('close', () => {
+      this.closed = true;
+      for (const r of this.closeWaiters) r();
+      this.closeWaiters = [];
+    });
+  }
+
+  /** Resolves when the server closes the connection; rejects if still open after timeoutMs. */
+  waitForClose(timeoutMs = 5000): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const i = this.closeWaiters.indexOf(onClose);
+        if (i >= 0) this.closeWaiters.splice(i, 1);
+        reject(new Error('connection did not close'));
+      }, timeoutMs);
+      const onClose = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      this.closeWaiters.push(onClose);
+    });
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   static connect(url: string, timeoutMs = 5000): Promise<MockClient> {

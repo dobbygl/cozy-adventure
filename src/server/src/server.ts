@@ -54,6 +54,8 @@ export class GameServer {
   private world: World | null = null;
   /** Live, mutable per-player state for connected players (persisted on save/leave). */
   private readonly players = new Map<string, PlayerState>();
+  /** Players in the reconnect window: keep their state in memory until the timer fires. */
+  private readonly disconnecting = new Map<string, { lastSeq: number; timer: ReturnType<typeof setTimeout> }>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt = 0;
   private msSinceWorldTime = 0;
@@ -109,6 +111,8 @@ export class GameServer {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    for (const rec of this.disconnecting.values()) clearTimeout(rec.timer);
+    this.disconnecting.clear();
     // Graceful shutdown persists the current world + player state.
     await this.persistAll();
     await this.transport.stop();
@@ -124,6 +128,7 @@ export class GameServer {
     const delta = now - this.lastTickAt;
     this.lastTickAt = now;
     this.world.tick(delta);
+    this.sweepTimeouts();
     this.relayAvatars(now);
     this.msSinceWorldTime += delta;
     if (this.msSinceWorldTime >= 1000) {
@@ -149,6 +154,18 @@ export class GameServer {
     }
     const produced = runDogPickups(this.world, dogPlayers, this.world.gameTime);
     for (const diff of produced) this.broadcast({ t: 'event', diff });
+  }
+
+  /** Disconnect sessions that have gone silent past the grace window (FR-026). */
+  private sweepTimeouts(): void {
+    const now = Date.now();
+    for (const s of this.sessions.all()) {
+      if (s.state === 'active' && now - s.lastKeepaliveAt > this.config.keepaliveTimeoutMs) {
+        this.logger.info({ playerId: s.playerId }, 'keepalive timeout; closing connection');
+        s.send({ t: 'kick', reason: 'timeout' });
+        s.conn.close();
+      }
+    }
   }
 
   private relayAvatars(now: number): void {
@@ -190,6 +207,9 @@ export class GameServer {
   private onMessage(conn: TransportConnection, data: string): void {
     const session = this.sessions.getByConnection(conn.id);
     if (!session) return;
+    // Any inbound message counts as liveness (active players send avatar_state;
+    // a hidden tab sends keepalive). The sweep only drops truly silent sessions.
+    session.lastKeepaliveAt = Date.now();
 
     let raw: unknown;
     try {
@@ -268,15 +288,37 @@ export class GameServer {
       session.conn.close();
       return;
     }
+    const playerId = msg.playerId ?? randomUUID();
+
+    // Double connection: a still-active session owns this playerId (e.g. a second
+    // tab). The new connection wins; the old one is kicked.
+    const existing = this.sessions.getByPlayer(playerId);
+    if (existing && existing !== session && existing.state === 'active') {
+      existing.state = 'closed';
+      existing.send({ t: 'kick', reason: 'replaced' });
+      this.sessions.remove(existing.conn.id);
+      existing.conn.close();
+    }
+
+    // Reconnect within the window: cancel the finalize timer and restore the
+    // command seq so replayed commands stay idempotent.
+    let restoredSeq = 0;
+    const reconnecting = this.disconnecting.get(playerId);
+    if (reconnecting) {
+      clearTimeout(reconnecting.timer);
+      this.disconnecting.delete(playerId);
+      restoredSeq = reconnecting.lastSeq;
+    }
+
+    // Capacity (after any replaced slot is freed).
     if (this.sessions.activeCount() >= this.config.maxPlayers) {
       this.sendError(session.conn, 'world_full', 'world is full');
       session.conn.close();
       return;
     }
 
-    const playerId = msg.playerId ?? randomUUID();
-    // Reuse the live state if this player is already tracked (e.g. quick rejoin);
-    // otherwise load from the store or start fresh.
+    // Reuse live state if still tracked (reconnect within window); else load from
+    // the store (new entry from persistence) or start fresh.
     let player = this.players.get(playerId);
     if (!player) {
       player = (await this.store.loadPlayer(playerId)) ?? createDefaultPlayer(playerId, msg.displayName, msg.modelId);
@@ -287,6 +329,7 @@ export class GameServer {
 
     this.players.set(playerId, player);
     session.state = 'active';
+    session.lastSeq = restoredSeq;
     session.info = { playerId, displayName: player.displayName, modelId: player.modelId };
     this.sessions.bindPlayer(session, playerId);
 
@@ -350,14 +393,26 @@ export class GameServer {
       session.state = 'closed';
       const playerId = session.playerId;
       this.broadcast({ t: 'peer_left', playerId });
-      // Persist the leaving player's progress, then stop tracking them; if the
-      // world just emptied, persist it too (FR-022).
-      const worldEmptied = this.sessions.activeCount() === 0;
-      void this.persistPlayer(playerId).finally(() => this.players.delete(playerId));
-      if (worldEmptied) void this.persistWorld();
-      this.logger.info({ playerId }, 'player disconnected');
+      // Persist progress now (so it survives even if the reconnect window lapses);
+      // if the world just emptied, persist it too (FR-022).
+      void this.persistPlayer(playerId);
+      if (this.sessions.activeCount() === 0) void this.persistWorld();
+      // Open a reconnect window: keep the player's live state in memory until it
+      // expires, so a quick reconnect restores identity + confirmed state.
+      const prev = this.disconnecting.get(playerId);
+      if (prev) clearTimeout(prev.timer);
+      const timer = setTimeout(() => this.finalizeDisconnect(playerId), this.config.reconnectWindowMs);
+      this.disconnecting.set(playerId, { lastSeq: session.lastSeq, timer });
+      this.logger.info({ playerId }, 'player disconnected; reconnect window open');
     }
     this.metrics.setConnectedPlayers(this.sessions.activeCount());
+  }
+
+  /** Reconnect window lapsed: drop the in-memory player state (progress already persisted). */
+  private finalizeDisconnect(playerId: string): void {
+    if (!this.disconnecting.delete(playerId)) return;
+    this.players.delete(playerId);
+    this.logger.info({ playerId }, 'reconnect window expired');
   }
 
   // --- persistence ---
