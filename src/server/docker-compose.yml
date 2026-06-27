@@ -1,0 +1,39 @@
+# Self-host the cozy-adventure multiplayer server + its PostgreSQL.
+# Run from src/server/:  docker compose up --build
+# The server applies its schema on startup, so no SQL needs mounting here.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cozy
+      POSTGRES_PASSWORD: cozy
+      POSTGRES_DB: cozy
+    volumes:
+      - cozy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cozy']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      # Repo root: the server bundles the @cozy/shared workspace.
+      context: ../..
+      dockerfile: src/server/Dockerfile
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://cozy:cozy@postgres:5432/cozy
+      WORLD_ID: ${WORLD_ID:-default}
+      SERVER_PASSWORD: ${SERVER_PASSWORD:-}
+      MAX_PLAYERS: ${MAX_PLAYERS:-8}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  cozy-pgdata:

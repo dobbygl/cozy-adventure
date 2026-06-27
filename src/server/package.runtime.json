@@ -1,0 +1,11 @@
+{
+  "name": "cozy-server-runtime",
+  "private": true,
+  "type": "module",
+  "description": "Runtime-only manifest for the server Docker image: just the deps tsup leaves external.",
+  "dependencies": {
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "ws": "^8.18.0"
+  }
+}

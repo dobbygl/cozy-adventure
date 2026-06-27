@@ -12,9 +12,10 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  // Only native runtime deps stay external. @cozy/shared is a workspace dep, which
-  // tsup would otherwise auto-externalize; force-bundle it so the image is
-  // self-contained (no need to ship the workspace package).
+  // Only the deps with native bindings / worker threads stay external (pg, pino, ws);
+  // those are installed in the runtime image. Everything else is bundled, including
+  // the @cozy/shared workspace and zod (pure JS), so the image ships just dist +
+  // those three packages.
   external: ['pg', 'pino', 'ws'],
-  noExternal: ['@cozy/shared'],
+  noExternal: ['@cozy/shared', 'zod'],
 });
