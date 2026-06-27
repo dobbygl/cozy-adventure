@@ -76,7 +76,7 @@ A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, writte
 - **Inter-system ordering sometimes relies on `setTimeout`** as a sync hack (e.g. in `game.ts`, `DogCompanion`, `BuildingSystem`). These are timing-fragile; if you touch initialization order, prefer awaiting the real load/init events.
 
 <!-- SPECKIT START -->
-Active feature plan: `specs/001-touch-controls/plan.md` (touch controls for mobile).
+Active feature plan: `specs/002-multiplayer-server/plan.md` (multiplayer dedicated server: one world per process). Repo target structure is a pnpm monorepo of three workspaces: `@cozy/game` (`src/game/`, the client/game), `@cozy/shared` (`src/shared/`, three-free kernel) and `@cozy/server` (`src/server/`). Migration to it is pending (tasks.md Phase 0).
 For additional context about technologies, project structure, and design
 decisions, read that plan and its `research.md` / `data-model.md` / `contracts/`.
 <!-- SPECKIT END -->

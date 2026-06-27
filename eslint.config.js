@@ -24,7 +24,7 @@ const tsRecommendedAsWarn = asWarn(
 );
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'public/**', 'node_modules/**', 'coverage/**'] },
+  { ignores: ['dist/**', 'public/**', 'node_modules/**', 'coverage/**', 'src/server/**'] },
   {
     files: ['src/**/*.{js,ts}'],
     languageOptions: {
