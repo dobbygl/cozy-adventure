@@ -1,4 +1,4 @@
-import type { WorldDocument, PlayerState } from '@shared/state';
+import type { WorldDocument, PlayerState } from '@cozy/shared';
 
 /** Persistence of the canonical world document (keyed by worldId). */
 export interface WorldStore {

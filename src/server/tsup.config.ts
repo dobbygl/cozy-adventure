@@ -1,9 +1,9 @@
 import { defineConfig } from 'tsup';
-import { fileURLToPath } from 'node:url';
 
-// Bundle the server (and the imported `../shared` module) into a single
-// self-contained ESM artifact for Docker. esbuild resolves the `@shared/*`
-// alias here so Node ESM never has to deal with extensionless cross-dir imports.
+// Bundle @cozy/server (and the imported @cozy/shared workspace package, resolved
+// via the pnpm node_modules symlink) into a single self-contained ESM artifact
+// for Docker. Only native runtime deps stay external, so the image never ships
+// `three` and `@cozy/shared` is inlined.
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm'],
@@ -12,11 +12,9 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  // Keep native/runtime deps external; bundle our own + shared code.
+  // Only native runtime deps stay external. @cozy/shared is a workspace dep, which
+  // tsup would otherwise auto-externalize; force-bundle it so the image is
+  // self-contained (no need to ship the workspace package).
   external: ['pg', 'pino', 'ws'],
-  esbuildOptions(options) {
-    options.alias = {
-      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
-    };
-  },
+  noExternal: ['@cozy/shared'],
 });

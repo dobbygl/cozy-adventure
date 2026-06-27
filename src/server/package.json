@@ -1,5 +1,5 @@
 {
-  "name": "cozy-adventure-server",
+  "name": "@cozy/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -19,6 +19,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@cozy/shared": "workspace:*",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
     "ws": "^8.18.0",

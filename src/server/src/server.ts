@@ -13,7 +13,7 @@ import { NullAuthProvider } from './auth/NullAuthProvider';
 import { PasswordAuthProvider } from './auth/PasswordAuthProvider';
 import { createDefaultPlayer } from './player';
 import { validateAvatarMove } from './session/avatarRelay';
-import { PROTOCOL_VERSION } from '@shared/protocol';
+import { PROTOCOL_VERSION } from '@cozy/shared';
 import type {
   ClientMessage,
   ServerMessage,
@@ -22,7 +22,7 @@ import type {
   AvatarStateMessage,
   AvatarSnapshot,
   PeerInfo,
-} from '@shared/protocol';
+} from '@cozy/shared';
 
 export interface GameServerDeps {
   config: Config;

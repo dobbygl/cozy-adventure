@@ -1,4 +1,4 @@
-import type { AvatarStateMessage } from '@shared/protocol';
+import type { AvatarStateMessage } from '@cozy/shared';
 
 // Avatar sanity validation (FR-010). The avatar is client-authoritative, but the
 // server cheaply rejects physically impossible moves so a manipulated or buggy

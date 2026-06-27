@@ -24,7 +24,9 @@ const tsRecommendedAsWarn = asWarn(
 );
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'public/**', 'node_modules/**', 'coverage/**', 'src/server/**'] },
+  // src/server and src/shared are their own pnpm workspaces with their own lint;
+  // the client must not lint them (and must not pick up their tsconfigs).
+  { ignores: ['dist/**', 'public/**', 'node_modules/**', 'coverage/**', 'src/server/**', 'src/shared/**'] },
   {
     files: ['src/**/*.{js,ts}'],
     languageOptions: {
@@ -59,6 +61,11 @@ export default tseslint.config(
       parser: tseslint.parser,
       ecmaVersion: 2022,
       sourceType: 'module',
+      // Pin the root so typescript-eslint doesn't trip over the sibling workspace
+      // tsconfigs (src/shared, src/server) when resolving candidate roots.
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     plugins: {
       '@typescript-eslint': tseslint.plugin,

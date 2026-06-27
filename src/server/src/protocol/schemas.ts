@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClientMessage } from '@shared/protocol';
+import type { ClientMessage } from '@cozy/shared';
 
 // Runtime validation for everything the server receives. The server trusts
 // nothing: inbound data is `unknown` until it passes these schemas. Kept here

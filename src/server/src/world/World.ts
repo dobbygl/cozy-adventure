@@ -1,7 +1,7 @@
 import { WorldClock } from './WorldClock';
 import { NetworkIdAllocator } from './networkId';
-import { randomWorldSeed } from '@shared/rng';
-import type { WorldDocument, WorldSnapshot } from '@shared/state';
+import { randomWorldSeed } from '@cozy/shared';
+import type { WorldDocument, WorldSnapshot } from '@cozy/shared';
 
 /**
  * The canonical, server-authoritative world. The server owns the seed (clients

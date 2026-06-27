@@ -1,5 +1,5 @@
 import type { TransportConnection } from '../transport/Transport';
-import type { ServerMessage, AvatarSnapshot, PeerInfo } from '@shared/protocol';
+import type { ServerMessage, AvatarSnapshot, PeerInfo } from '@cozy/shared';
 
 export type SessionState =
   | 'connecting'

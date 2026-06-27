@@ -1,4 +1,4 @@
-import type { PlayerState } from '@shared/state';
+import type { PlayerState } from '@cozy/shared';
 
 /** A brand-new player's default state (multiplayer starts fresh in v1). */
 export function createDefaultPlayer(

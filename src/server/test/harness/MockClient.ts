@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import type { ClientMessage, ServerMessage, ServerMessageType } from '@shared/protocol';
+import type { ClientMessage, ServerMessage, ServerMessageType } from '@cozy/shared';
 
 type ByType<T extends ServerMessageType> = Extract<ServerMessage, { t: T }>;
 

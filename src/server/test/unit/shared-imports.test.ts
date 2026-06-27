@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { PROTOCOL_VERSION } from '@shared/protocol';
-import { createWorldRng } from '@shared/rng';
-import type { WorldDocument } from '@shared/state';
+import { PROTOCOL_VERSION } from '@cozy/shared';
+import { createWorldRng } from '@cozy/shared';
+import type { WorldDocument } from '@cozy/shared';
 
-// Guards the @shared alias wiring and the reuse of the client's seeded rng
-// without duplication (server imports the same src/shared/rng.ts).
+// Guards the @cozy/shared workspace wiring and the reuse of the client's seeded
+// rng without duplication (server imports the same src/shared/rng.ts).
 describe('shared module wiring', () => {
   it('exposes a numeric protocol version', () => {
     expect(typeof PROTOCOL_VERSION).toBe('number');

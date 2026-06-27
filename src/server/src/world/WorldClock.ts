@@ -1,4 +1,4 @@
-import type { WorldClockState } from '@shared/state';
+import type { WorldClockState } from '@cozy/shared';
 
 const DAY_MS = 86_400_000;
 

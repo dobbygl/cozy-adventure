@@ -1,5 +1,5 @@
 import type { Store } from './Store';
-import type { WorldDocument, PlayerState } from '@shared/state';
+import type { WorldDocument, PlayerState } from '@cozy/shared';
 
 /**
  * In-memory store for tests and local dev (no external dependency). Deep-clones

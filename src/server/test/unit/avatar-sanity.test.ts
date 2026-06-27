@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateAvatarMove, type LastAvatar } from '../../src/session/avatarRelay';
-import type { AvatarStateMessage } from '@shared/protocol';
+import type { AvatarStateMessage } from '@cozy/shared';
 
 function mk(x: number, z: number): AvatarStateMessage {
   return {
