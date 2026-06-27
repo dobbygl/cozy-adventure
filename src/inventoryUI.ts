@@ -1,27 +1,51 @@
 import * as THREE from 'three';
+import type { Inventory, Item, ItemStack } from './inventory.js';
+
+/** Window augmentation for the global Game singleton (game.js, not yet migrated). */
+type WindowWithGame = Window & { gameInstance?: { camera?: THREE.Camera } };
 
 /**
  * InventoryUI - Manages the visual interface for inventory system
  */
 export class InventoryUI {
-  constructor(inventory, player = null) {
+  inventory: Inventory;
+  // Player is not yet migrated (Ola 4); typed loosely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  player: any;
+  isBackpackOpen: boolean;
+  draggedItem: ItemStack | null;
+  draggedSlot: number | null;
+  // UI elements assigned synchronously by createUI() in the constructor.
+  hotbarElement!: HTMLDivElement;
+  backpackElement!: HTMLDivElement;
+  overlayElement!: HTMLDivElement;
+  previewPanel!: HTMLDivElement;
+  buildPromptElement!: HTMLDivElement;
+  previewScene: THREE.Scene | null;
+  previewCamera: THREE.PerspectiveCamera | null;
+  previewRenderer: THREE.WebGLRenderer | null;
+  previewMesh: THREE.Object3D | null;
+  currentPreviewItem: Item | null;
+  pickupPopups: HTMLElement[];
+  draggedElement: HTMLElement | null;
+  draggedData: { container: string; index: number; itemStack: ItemStack } | null;
+
+  constructor(inventory: Inventory, player: any = null) {
     this.inventory = inventory;
     this.player = player; // Reference to player for accessing preloaded models
     this.isBackpackOpen = false;
     this.draggedItem = null;
     this.draggedSlot = null;
     
-    // UI Elements
-    this.hotbarElement = null;
-    this.backpackElement = null;
-    this.overlayElement = null;
-    this.previewPanel = null;
+    // UI elements (hotbar/backpack/overlay/previewPanel/buildPrompt) are created in createUI().
     this.previewScene = null;
     this.previewCamera = null;
     this.previewRenderer = null;
-this.currentPreviewItem = null;
+    this.previewMesh = null;
+    this.currentPreviewItem = null;
     this.pickupPopups = [];
-    this.buildPromptElement = null;
+    this.draggedElement = null;
+    this.draggedData = null;
     
     this.createUI();
     this.setupEventListeners();
@@ -809,10 +833,10 @@ document.body.appendChild(this.hotbarElement);
     document.body.appendChild(this.previewPanel);
   }
 
-  createSlot(container, index) {
+  createSlot(container: string, index: number): HTMLDivElement {
     const slot = document.createElement('div');
     slot.dataset.container = container;
-    slot.dataset.index = index;
+    slot.dataset.index = String(index);
     
     // Add drag and drop functionality
     slot.draggable = false; // We'll handle this manually
@@ -846,10 +870,10 @@ document.body.appendChild(this.hotbarElement);
 
     // Click handlers for slots
     document.addEventListener('click', (e) => {
-      const slot = e.target.closest('[data-container][data-index]');
+      const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-container][data-index]');
       if (slot) {
-        const container = slot.dataset.container;
-        const index = parseInt(slot.dataset.index);
+        const container = slot.dataset.container!;
+        const index = parseInt(slot.dataset.index!);
         
         if (container === 'hotbar') {
           this.inventory.selectHotbarSlot(index);
@@ -874,7 +898,7 @@ document.body.appendChild(this.hotbarElement);
     this.inventory.onItemAdded = (item, quantity, totalQuantity) => this.showPickupPopup(item, quantity, totalQuantity);
   }
 
-  getSlotItem(container, index) {
+  getSlotItem(container: string, index: number): ItemStack | null {
     const array = container === 'hotbar' ? this.inventory.hotbar : this.inventory.backpack;
     return array[index];
   }
@@ -887,10 +911,10 @@ document.body.appendChild(this.hotbarElement);
     let dragOffsetY = 0;
     // Mouse down - start drag
     document.addEventListener('mousedown', (e) => {
-      const slot = e.target.closest('[data-container][data-index]');
+      const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-container][data-index]');
       if (!slot) return;
-      const container = slot.dataset.container;
-      const index = parseInt(slot.dataset.index);
+      const container = slot.dataset.container!;
+      const index = parseInt(slot.dataset.index!);
       const itemStack = this.getSlotItem(container, index);
       if (!itemStack) return;
       e.preventDefault();
@@ -917,7 +941,7 @@ document.body.appendChild(this.hotbarElement);
       this.draggedElement.style.left = (e.clientX - dragOffsetX) + 'px';
       this.draggedElement.style.top = (e.clientY - dragOffsetY) + 'px';
       // Highlight valid drop targets
-      const targetSlot = e.target.closest('[data-container][data-index]');
+      const targetSlot = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-container][data-index]');
       document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
       
       if (targetSlot && targetSlot !== this.draggedElement) {
@@ -928,11 +952,11 @@ document.body.appendChild(this.hotbarElement);
     document.addEventListener('mouseup', (e) => {
       if (!this.draggedElement || !this.draggedData) return;
       // Find drop target
-      const targetSlot = e.target.closest('[data-container][data-index]');
+      const targetSlot = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-container][data-index]');
       
       if (targetSlot) {
-        const targetContainer = targetSlot.dataset.container;
-        const targetIndex = parseInt(targetSlot.dataset.index);
+        const targetContainer = targetSlot.dataset.container!;
+        const targetIndex = parseInt(targetSlot.dataset.index!);
         
         // Attempt to move item
         if (this.draggedData.container !== targetContainer || this.draggedData.index !== targetIndex) {
@@ -952,7 +976,7 @@ document.body.appendChild(this.hotbarElement);
       e.preventDefault();
     });
   }
-  createDragElement(itemStack) {
+  createDragElement(itemStack: ItemStack): HTMLDivElement {
     const element = document.createElement('div');
     element.style.cssText = `
       position: fixed;
@@ -1006,7 +1030,7 @@ document.body.appendChild(this.hotbarElement);
   }
 
   updateHotbar() {
-    const hotbarSlots = this.hotbarElement.querySelectorAll('.hotbar-slot');
+    const hotbarSlots = this.hotbarElement.querySelectorAll<HTMLElement>('.hotbar-slot');
     
     hotbarSlots.forEach((slot, index) => {
       const itemStack = this.inventory.hotbar[index];
@@ -1023,21 +1047,21 @@ document.body.appendChild(this.hotbarElement);
 
   updateBackpack() {
     // Update hotbar slots in backpack view
-    const backpackHotbarSlots = this.backpackElement.querySelectorAll('.hotbar-section .inventory-slot');
+    const backpackHotbarSlots = this.backpackElement.querySelectorAll<HTMLElement>('.hotbar-section .inventory-slot');
     backpackHotbarSlots.forEach((slot, index) => {
       const itemStack = this.inventory.hotbar[index];
       this.updateSlotDisplay(slot, itemStack);
     });
 
     // Update backpack slots
-    const backpackSlots = this.backpackElement.querySelectorAll('.backpack-grid .inventory-slot');
+    const backpackSlots = this.backpackElement.querySelectorAll<HTMLElement>('.backpack-grid .inventory-slot');
     backpackSlots.forEach((slot, index) => {
       const itemStack = this.inventory.backpack[index];
       this.updateSlotDisplay(slot, itemStack);
     });
   }
 
-  updateSlotDisplay(slotElement, itemStack) {
+  updateSlotDisplay(slotElement: HTMLElement, itemStack: ItemStack | null): void {
     // Clear existing content (except slot number)
     const existingIcon = slotElement.querySelector('.item-icon');
     const existingQuantity = slotElement.querySelector('.item-quantity');
@@ -1072,9 +1096,9 @@ document.body.appendChild(this.hotbarElement);
     }
   }
 
-  getItemIcon(item) {
+  getItemIcon(item: Item): { icon: string; color: string } {
     // Define icons for specific items
-    const itemIcons = {
+    const itemIcons: Record<string, { icon: string; color: string }> = {
       'wood': { icon: '🪵', color: '#8B4513' },
       'stone': { icon: '🪨', color: '#696969' },
       'iron_ore': { icon: '⛰️', color: '#708090' },
@@ -1116,7 +1140,7 @@ document.body.appendChild(this.hotbarElement);
       return itemIcons[item.id];
     }
     // Fall back to type-based icons
-    const typeIcons = {
+    const typeIcons: Record<string, { icon: string; color: string }> = {
       'tool': { icon: '🔧', color: '#FF9800' },
       'weapon': { icon: '⚔️', color: '#F44336' },
       'consumable': { icon: '🍯', color: '#4CAF50' },
@@ -1125,8 +1149,8 @@ document.body.appendChild(this.hotbarElement);
     };
     return typeIcons[item.type] || { icon: '❓', color: '#666' };
   }
-  getItemColor(itemType) {
-    const colors = {
+  getItemColor(itemType: string): string {
+    const colors: Record<string, string> = {
       'tool': '#FF9800',
       'weapon': '#F44336',
       'consumable': '#4CAF50',
@@ -1164,18 +1188,7 @@ document.body.appendChild(this.hotbarElement);
     document.body.style.overflow = '';
   }
 
-  destroy() {
-    if (this.hotbarElement) {
-      this.hotbarElement.remove();
-    }
-if (this.overlayElement) {
-      this.overlayElement.remove();
-    }
-    if (this.buildPromptElement) {
-      this.buildPromptElement.remove();
-    }
-  }
-  async showItemPreview(item) {
+  async showItemPreview(item: Item): Promise<void> {
     this.currentPreviewItem = item;
     this.previewPanel.classList.add('visible');
     
@@ -1204,9 +1217,10 @@ if (this.overlayElement) {
     this.previewCamera = null;
     this.previewMesh = null;
   }
-  updateItemDetails(item) {
+  updateItemDetails(item: any): void {
     const detailsContainer = document.getElementById('item-details-content');
-    
+    if (!detailsContainer) return;
+
     detailsContainer.innerHTML = `
       <div class="item-name">${item.name}</div>
       <div class="item-type">${item.type}</div>
@@ -1245,9 +1259,10 @@ if (this.overlayElement) {
       </div>
     `;
   }
-  async setup3DPreview(item) {
+  async setup3DPreview(item: Item): Promise<void> {
     const container = document.getElementById('item-preview-3d');
-    
+    if (!container) return;
+
     // Clean up existing renderer
     if (this.previewRenderer) {
       container.removeChild(this.previewRenderer.domElement);
@@ -1290,7 +1305,7 @@ if (this.overlayElement) {
     this.animate3DPreview();
   }
   // Helper function to automatically fit any 3D object in the preview container
-  fitModelToPreview(object, targetSize = 1.5) {
+  fitModelToPreview(object: THREE.Object3D, targetSize = 1.5): number {
     // Calculate the bounding box of the object
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3());
@@ -1310,8 +1325,10 @@ if (this.overlayElement) {
     
     return scaleFactor;
   }
-  async create3DItem(item) {
-    let geometry, material, mesh;
+  async create3DItem(item: Item): Promise<void> {
+    let geometry: THREE.BufferGeometry | undefined;
+    let material: THREE.Material | undefined;
+    let mesh: any;
     
     // Create different geometries based on item type
     switch (item.type) {
@@ -1332,14 +1349,14 @@ if (this.overlayElement) {
             this.fitModelToPreview(mesh);
             
             // Ensure all meshes cast and receive shadows
-            mesh.traverse((child) => {
+            mesh.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
             
-            this.previewScene.add(mesh);
+            this.previewScene!.add(mesh);
             this.previewMesh = mesh;
             console.log('Using preloaded axe model for inventory preview (auto-fitted)');
             return;
@@ -1369,14 +1386,14 @@ if (this.overlayElement) {
             this.fitModelToPreview(mesh);
             
             // Ensure all meshes cast and receive shadows
-            mesh.traverse((child) => {
+            mesh.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
             
-            this.previewScene.add(mesh);
+            this.previewScene!.add(mesh);
             this.previewMesh = mesh;
             console.log('Using preloaded axe model for tool preview (auto-fitted)');
             return;
@@ -1406,14 +1423,14 @@ if (this.overlayElement) {
             this.fitModelToPreview(mesh);
             
             // Ensure all meshes cast and receive shadows
-            mesh.traverse((child) => {
+            mesh.traverse((child: any) => {
               if (child.isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
             
-            this.previewScene.add(mesh);
+            this.previewScene!.add(mesh);
             this.previewMesh = mesh;
             console.log('Using preloaded apple model for inventory preview (auto-fitted)');
             return;
@@ -1451,25 +1468,26 @@ if (this.overlayElement) {
       mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      this.previewScene.add(mesh);
+      this.previewScene!.add(mesh);
       
       // Store reference for animation
       this.previewMesh = mesh;
     }
   }
-  animate3DPreview() {
-    if (!this.previewRenderer || !this.currentPreviewItem || !this.previewScene) return;
-    
+  animate3DPreview(): void {
+    const { previewRenderer, previewScene, previewCamera } = this;
+    if (!previewRenderer || !this.currentPreviewItem || !previewScene || !previewCamera) return;
+
     requestAnimationFrame(() => this.animate3DPreview());
-    
+
     // Rotate the item
     if (this.previewMesh) {
       this.previewMesh.rotation.y += 0.01;
     }
-    
-    this.previewRenderer.render(this.previewScene, this.previewCamera);
+
+    previewRenderer.render(previewScene, previewCamera);
   }
-  showPickupPopup(item, quantityAdded, totalQuantity) {
+  showPickupPopup(item: Item, quantityAdded: number, totalQuantity: number): void {
     // Check if we've reached the maximum number of popups
     if (this.pickupPopups.length >= 3) {
       // Remove the oldest popup immediately
@@ -1521,7 +1539,7 @@ if (this.overlayElement) {
     console.log(`Pickup popup shown: ${item.name} +${quantityAdded} (Total: ${totalQuantity})`);
   }
   // Method to check if an item being removed should close the preview
-  onItemRemovedFromWorld(itemId) {
+  onItemRemovedFromWorld(itemId: string): void {
     // If the preview panel is open and showing the item that was just picked up
     if (this.currentPreviewItem && this.currentPreviewItem.id === itemId) {
       console.log(`Closing item preview for ${itemId} - item was picked up by dog`);
@@ -1531,7 +1549,7 @@ if (this.overlayElement) {
     this.cleanupWorldPickupPrompts(itemId);
   }
   // Method to clean up world pickup prompts for a specific item
-  cleanupWorldPickupPrompts(itemId) {
+  cleanupWorldPickupPrompts(itemId: string): void {
     console.log(`🧹 Cleaning up pickup prompts for item: ${itemId}`);
     
     // Don't clean up pickup prompts when dog picks up items
@@ -1542,26 +1560,27 @@ if (this.overlayElement) {
     // the item is no longer in the world during its next update cycle
   }
   // Method to show pickup prompts for items when player approaches them again
-  showWorldPickupPromptsForNearbyItems(nearbyItems) {
+  showWorldPickupPromptsForNearbyItems(nearbyItems: any[]): void {
     console.log('🔍 Using existing pickup UI system for nearby items:', nearbyItems.length);
     // Let the main game's pickup UI system handle this - don't create duplicate prompts
   }
   // Method to show pickup prompts when player approaches completely new items
-  showPickupPromptsForNewItems(nearbyItems) {
+  showPickupPromptsForNewItems(nearbyItems: any[]): void {
     console.log('🔍 Using existing pickup UI system for new items:', nearbyItems.length);
     // Let the main game's pickup UI system handle this - don't create duplicate prompts
   }
   // Method to create a new world pickup prompt for an item
-  createNewWorldPickupPrompt(item) {
+  createNewWorldPickupPrompt(item: any): null {
     console.log('🚫 Not creating duplicate world pickup prompt - using existing system');
     // Disabled - let the main game's pickup UI handle this
     return null;
   }
   // Method to update pickup prompt position based on 3D item position
-  updatePromptPosition(prompt, item) {
-    if (!window.gameInstance || !window.gameInstance.camera) return;
+  updatePromptPosition(prompt: HTMLElement, item: any): void {
+    const game = (window as WindowWithGame).gameInstance;
+    if (!game || !game.camera) return;
     
-    const camera = window.gameInstance.camera;
+    const camera = game.camera;
     const itemPosition = item.position.clone();
     
     // Add offset above the item
@@ -1587,21 +1606,21 @@ if (this.overlayElement) {
     }
   }
   // Method to update all world pickup prompt positions (called from game loop)
-  updateAllPromptPositions(nearbyItems) {
+  updateAllPromptPositions(nearbyItems: any[]): void {
     // First, validate that all existing prompts still have valid targets
     this.validateExistingPrompts(nearbyItems);
-    
-    nearbyItems.forEach(item => {
-      const prompt = document.querySelector(`.world-pickup-prompt[data-item-id="${item.userData.itemId}"]`);
+
+    nearbyItems.forEach((item: any) => {
+      const prompt = document.querySelector<HTMLElement>(`.world-pickup-prompt[data-item-id="${item.userData.itemId}"]`);
       if (prompt && prompt.dataset.hidden !== 'true') {
         this.updatePromptPosition(prompt, item);
       }
     });
   }
   // Method to validate existing pickup prompts and disable invalid ones
-  validateExistingPrompts(currentNearbyItems) {
-    const allPrompts = document.querySelectorAll('.world-pickup-prompt');
-    const currentItemIds = new Set(currentNearbyItems.map(item => item.userData.itemId));
+  validateExistingPrompts(currentNearbyItems: any[]): void {
+    const allPrompts = document.querySelectorAll<HTMLElement>('.world-pickup-prompt');
+    const currentItemIds = new Set(currentNearbyItems.map((item: any) => item.userData.itemId));
     
     allPrompts.forEach(prompt => {
       const itemId = prompt.dataset.itemId;

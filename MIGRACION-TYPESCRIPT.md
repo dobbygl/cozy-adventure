@@ -89,7 +89,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/LoadingScreen.js`
 - [x] `src/InGameUI.js`
 - [x] `src/BuildingUI.js`
-- [ ] `src/inventoryUI.js` (ya tiene JSDoc)
+- [x] `src/inventoryUI.js` (ya tiene JSDoc)
 - [ ] `src/MainMenu.js`
 - [ ] `src/DebugUI.js` (ojo: lee `window.game` inexistente; documentar, no "arreglar" aquí)
 
