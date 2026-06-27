@@ -128,4 +128,50 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     expect(a.peerCount).toBe(0);
     expect(created.get(jb.playerId)?.disposed).toBe(true);
   });
+
+  it('routes a peer world mutation into ClientWorld (and its scene handler)', async () => {
+    ctx = await startTestServer();
+    const chopped: number[] = [];
+    const a = new NetworkSession({
+      config: { url: ctx.url },
+      remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
+      now: () => 0,
+      worldHandlers: { onTreeChopped: (id) => chopped.push(id) },
+    });
+    cleanups.push(() => a.destroy());
+    await a.connect();
+    a.begin();
+
+    const b = new NetworkSystem({ url: ctx.url });
+    cleanups.push(() => b.destroy());
+    await b.connect();
+    b.sendCommand({ type: 'chop_tree', networkId: 42 });
+    await sleep(200);
+    expect(chopped).toContain(42); // A's scene handler fired
+    expect(a.world.isTreeChopped(42)).toBe(true);
+  });
+
+  it('buffers world diffs before begin() and applies them on begin()', async () => {
+    ctx = await startTestServer();
+    const chopped: number[] = [];
+    const a = new NetworkSession({
+      config: { url: ctx.url },
+      remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
+      now: () => 0,
+      worldHandlers: { onTreeChopped: (id) => chopped.push(id) },
+    });
+    cleanups.push(() => a.destroy());
+    await a.connect(); // not begun: scene not ready
+
+    const b = new NetworkSystem({ url: ctx.url });
+    cleanups.push(() => b.destroy());
+    await b.connect();
+    b.sendCommand({ type: 'chop_tree', networkId: 99 });
+    await sleep(200);
+    expect(chopped).toEqual([]); // buffered while loading
+
+    a.begin();
+    expect(chopped).toEqual([99]); // flushed once the scene is ready
+    expect(a.world.isTreeChopped(99)).toBe(true);
+  });
 });

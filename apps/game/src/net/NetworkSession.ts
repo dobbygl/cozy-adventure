@@ -1,5 +1,6 @@
 import { NetworkSystem, type NetworkConfig, type AvatarStateInput, type JoinResult } from './NetworkSystem.js';
 import { RemotePlayerManager, type RemotePlayerFactory } from './RemotePlayerManager.js';
+import { ClientWorld, type WorldChangeHandlers } from './ClientWorld.js';
 import type {
   WorldCommand,
   WorldDiff,
@@ -19,10 +20,8 @@ import type {
 // World-mutation events (P2) and lifecycle events (P3) are forwarded to the game
 // layer through NetworkSessionHandlers.
 
-/** World/session callbacks the game layer plugs in (world sync, errors, lifecycle). */
+/** Session lifecycle callbacks the game layer plugs in (rejections, errors, time, close). */
 export interface NetworkSessionHandlers {
-  onWorldEvent?(diff: WorldDiff): void;
-  onWorldSnapshot?(world: WorldSnapshot): void;
   onCommandRejected?(seq: number, reason: RejectReason): void;
   onWorldTime?(clock: WorldClockState): void;
   onError?(code: ErrorCode, message: string): void;
@@ -36,37 +35,49 @@ export interface NetworkSessionDeps {
   remoteFactory: RemotePlayerFactory;
   /** Monotonic client clock in ms (e.g. () => performance.now()); injected for tests. */
   now: () => number;
+  /** Scene-change callbacks for confirmed world diffs (tree/building/drop add/remove). */
+  worldHandlers?: WorldChangeHandlers;
   handlers?: NetworkSessionHandlers;
 }
 
 export class NetworkSession {
   readonly net: NetworkSystem;
+  /** The client's view of the authoritative world (diffs applied to derived state + scene). */
+  readonly world: ClientWorld;
   private readonly remoteFactory: RemotePlayerFactory;
   private readonly now: () => number;
   private remotes: RemotePlayerManager | null = null;
   private localPlayerId = '';
   private worldSeed = 0;
-  // Peer materialization is deferred until begin(): connect() can run before the
-  // scene exists (so a bad URL fails before anything is built), and peers that join
-  // during world loading are buffered here, then flushed once the scene is ready.
+  // Materialization is deferred until begin(): connect() can run before the scene
+  // exists (so a bad URL fails before anything is built). Peers and world diffs that
+  // arrive while the scene loads are buffered here, then flushed once it is ready.
   private started = false;
   private pendingPeers: PeerInfo[] = [];
+  private pendingWorld: WorldSnapshot | null = null;
+  private pendingDiffs: WorldDiff[] = [];
 
   constructor(deps: NetworkSessionDeps) {
     this.remoteFactory = deps.remoteFactory;
     this.now = deps.now;
+    this.world = new ClientWorld(deps.worldHandlers);
     const h = deps.handlers ?? {};
-    // Presence/relay are handled here; world + lifecycle events forward to the game.
-    // Before begin(), peer joins/leaves are buffered (no scene yet); after begin(),
-    // they apply live and snapshots route into the per-peer interpolation buffers.
+    // Presence/relay/world-sync are handled here; rejection/error/time/close forward
+    // to the game. Before begin(), peer and world events are buffered (no scene yet).
     this.net = new NetworkSystem(deps.config, {
       onPeerJoined: (peer) => this.onPeerJoined(peer),
       onPeerLeft: (id) => this.onPeerLeft(id),
       onAvatarSnapshots: (players) => {
         if (this.started) this.remotes?.applySnapshots(players, this.now());
       },
-      onWorldEvent: (diff) => h.onWorldEvent?.(diff),
-      onWorldSnapshot: (world) => h.onWorldSnapshot?.(world),
+      onWorldEvent: (diff) => {
+        if (this.started) this.world.applyDiff(diff);
+        else this.pendingDiffs.push(diff);
+      },
+      onWorldSnapshot: (world) => {
+        if (this.started) this.world.loadSnapshot(world);
+        else this.pendingWorld = world;
+      },
       onCommandRejected: (seq, reason) => h.onCommandRejected?.(seq, reason),
       onWorldTime: (clock) => h.onWorldTime?.(clock),
       onError: (code, message) => h.onError?.(code, message),
@@ -86,6 +97,7 @@ export class NetworkSession {
     this.worldSeed = joined.seed;
     this.remotes = new RemotePlayerManager(joined.playerId, this.remoteFactory);
     this.pendingPeers = [...joined.peers];
+    this.pendingWorld = joined.world;
     return joined;
   }
 
@@ -96,6 +108,14 @@ export class NetworkSession {
   begin(): void {
     if (this.started) return;
     this.started = true;
+    // Materialize the world as of join, then any diffs that arrived during loading,
+    // then the peers (order: world before its later diffs; peers independent).
+    if (this.pendingWorld) {
+      this.world.loadSnapshot(this.pendingWorld);
+      this.pendingWorld = null;
+    }
+    for (const diff of this.pendingDiffs) this.world.applyDiff(diff);
+    this.pendingDiffs = [];
     for (const peer of this.pendingPeers) this.remotes?.add(peer);
     this.pendingPeers = [];
   }
