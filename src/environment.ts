@@ -1,9 +1,34 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { createWorldRng } from './shared/rng';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { createWorldRng, type Rng } from './shared/rng';
+import type { CollisionSystem } from './CollisionSystem.js';
+
+/** A placed tree instance and where it sits. */
+export interface TreeData {
+  mesh: THREE.Object3D;
+  typeIndex: number;
+  instanceIndex: number;
+  position: { x: number; y: number; z: number };
+}
 
 export class Environment {
-  constructor(scene, collisionSystem = null, seed = undefined) {
+  scene: THREE.Scene;
+  collisionSystem: CollisionSystem | null;
+  rng: Rng;
+  treePositions!: { x: number; z: number; scale: number }[];
+  loadedTrees!: TreeData[];
+  waterMesh!: THREE.Mesh;
+  waveTime!: number;
+  waveSpeed!: number;
+  wavesPaused!: boolean;
+  waveAnimationId!: number | null;
+  originalWaterPositions!: ArrayLike<number>;
+
+  constructor(
+    scene: THREE.Scene,
+    collisionSystem: CollisionSystem | null = null,
+    seed: number | string | undefined = undefined
+  ) {
     this.scene = scene;
     this.collisionSystem = collisionSystem;
     // Deterministic world RNG: the same seed always yields the same layout.
@@ -189,18 +214,24 @@ export class Environment {
     
     console.log(`Finished loading ${this.loadedTrees.length} trees with colliders`);
   }
-  loadTreeModel(loader, url) {
-    return new Promise((resolve, reject) => {
+  loadTreeModel(loader: GLTFLoader, url: string): Promise<GLTF> {
+    return new Promise<GLTF>((resolve, reject) => {
       loader.load(url, resolve, undefined, reject);
     });
   }
-  createTreeInstance(treeModel, treeConfig, typeIndex, instanceIndex) {
+  createTreeInstance(
+    treeModel: THREE.Object3D,
+    treeConfig: any,
+    typeIndex: number,
+    instanceIndex: number
+  ): TreeData | null {
     const treeClone = treeModel.clone();
     
     // Find a valid position that doesn't overlap with existing trees
     let validPosition = false;
     let attempts = 0;
-    let x, z;
+    let x = 0;
+    let z = 0;
     
     while (!validPosition && attempts < 50) {
       // Random position within the island bounds (avoiding center and edges)
@@ -245,7 +276,7 @@ export class Environment {
       treeClone.scale.set(finalScale, finalScale, finalScale);
       
       // Enable shadows and remove shine
-      treeClone.traverse((child) => {
+      treeClone.traverse((child: any) => {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
@@ -254,7 +285,7 @@ export class Environment {
           if (child.material) {
             if (Array.isArray(child.material)) {
               // Handle multiple materials
-              child.material.forEach(mat => {
+              child.material.forEach((mat: any) => {
                 if (mat.roughness !== undefined) mat.roughness = 1.0;
                 if (mat.metalness !== undefined) mat.metalness = 0.0;
               });
@@ -296,7 +327,8 @@ export class Environment {
     
     console.log('All tree colliders created successfully');
   }
-  createTreeCollider(treeData) {
+  createTreeCollider(treeData: TreeData) {
+    if (!this.collisionSystem) return;
     const trunkRadius = 0.6; // Reduced from 0.8 to minimize visual interference
     const trunkHeight = 3.0; // Reduced from 4.0 to stay closer to actual trunk
     
@@ -370,7 +402,7 @@ export class Environment {
     
     console.log('Created expansive ocean water with animated waves');
   }
-  initializeWaveAnimation(waterMesh) {
+  initializeWaveAnimation(waterMesh: THREE.Mesh) {
     // Store animation properties
     this.waterMesh = waterMesh;
     this.waveTime = 0;

@@ -101,7 +101,7 @@ Un archivo se da por migrado cuando:
 ### Ola 5 — Sistemas compuestos
 - [x] `src/BuildingIntegrationSystem.js` (depende de FarmingSystem ✓)
 - [x] `src/BuildingSystem.js` (archivo más grande, 2356 líneas; sus 5 deps ya en .ts; iteración propia)
-- [ ] `src/environment.js` (depende de `shared/rng` ✓)
+- [x] `src/environment.js` (depende de `shared/rng` ✓)
 
 ### Ola 6 — Orquestadores (al final, ya con todo tipado debajo)
 - [ ] `src/game.js` (importa ~18 módulos)
