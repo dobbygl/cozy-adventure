@@ -1,6 +1,15 @@
 import * as THREE from 'three';
 export class DebugUI {
-  constructor(game) {
+  // game is the Game (game.js, not yet migrated); typed loosely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  game: any;
+  isVisible: boolean;
+  uPressed: boolean;
+  treePivotDots: THREE.Object3D[];
+  dogDetectionRangeHelper: THREE.Object3D | null;
+  stepVisualMesh?: THREE.Mesh | null;
+
+  constructor(game: any) {
     this.game = game;
     this.isVisible = false;
     this.uPressed = false;
@@ -8,6 +17,12 @@ export class DebugUI {
     this.dogDetectionRangeHelper = null;
     this.setupEventListeners();
     this.setupHandItemEditor();
+  }
+
+  /** Get an element as an input (debug DOM is static; cast is intentional). */
+  gi(id: string): HTMLInputElement {
+    const d: Document = document;
+    return d.getElementById(id) as HTMLInputElement;
   }
 
   setupEventListeners() {
@@ -89,7 +104,7 @@ export class DebugUI {
       </div>
     `;
     // Add editor to page if it doesn't exist
-    if (!document.getElementById('handItemEditor')) {
+    if (!this.gi('handItemEditor')) {
       document.body.insertAdjacentHTML('beforeend', editorHtml);
       this.setupHandItemEditorListeners();
     }
@@ -97,60 +112,60 @@ export class DebugUI {
   setupHandItemEditorListeners() {
     // Position controls
     ['X', 'Y', 'Z'].forEach(axis => {
-      const slider = document.getElementById(`handPos${axis}`);
-      const input = document.getElementById(`handPos${axis}Val`);
+      const slider = this.gi(`handPos${axis}`);
+      const input = this.gi(`handPos${axis}Val`);
       
       if (slider && input) {
-        const updatePosition = (value) => {
+        const updatePosition = (value: string) => {
           slider.value = value;
           input.value = value;
           this.updateHandItemTransform();
         };
         
-        slider.addEventListener('input', (e) => updatePosition(e.target.value));
-        input.addEventListener('input', (e) => updatePosition(e.target.value));
+        slider.addEventListener('input', (e) => updatePosition((e.target as HTMLInputElement).value));
+        input.addEventListener('input', (e) => updatePosition((e.target as HTMLInputElement).value));
       }
     });
     // Rotation controls
     ['X', 'Y', 'Z'].forEach(axis => {
-      const slider = document.getElementById(`handRot${axis}`);
-      const input = document.getElementById(`handRot${axis}Val`);
+      const slider = this.gi(`handRot${axis}`);
+      const input = this.gi(`handRot${axis}Val`);
       
       if (slider && input) {
-        const updateRotation = (value) => {
+        const updateRotation = (value: string) => {
           slider.value = value;
           input.value = value;
           this.updateHandItemTransform();
         };
         
-        slider.addEventListener('input', (e) => updateRotation(e.target.value));
-        input.addEventListener('input', (e) => updateRotation(e.target.value));
+        slider.addEventListener('input', (e) => updateRotation((e.target as HTMLInputElement).value));
+        input.addEventListener('input', (e) => updateRotation((e.target as HTMLInputElement).value));
       }
     });
     // Reset button
-    const resetBtn = document.getElementById('resetHandTransform');
+    const resetBtn = this.gi('resetHandTransform');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         // Reset all values to defaults
         ['X', 'Y', 'Z'].forEach(axis => {
-          document.getElementById(`handPos${axis}`).value = '0';
-          document.getElementById(`handPos${axis}Val`).value = '0';
-          document.getElementById(`handRot${axis}`).value = '0';
-          document.getElementById(`handRot${axis}Val`).value = '0';
+          this.gi(`handPos${axis}`).value = '0';
+          this.gi(`handPos${axis}Val`).value = '0';
+          this.gi(`handRot${axis}`).value = '0';
+          this.gi(`handRot${axis}Val`).value = '0';
         });
         this.updateHandItemTransform();
       });
     }
     // Copy button
-    const copyBtn = document.getElementById('copyHandTransform');
+    const copyBtn = this.gi('copyHandTransform');
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
-        const posX = document.getElementById('handPosXVal').value;
-        const posY = document.getElementById('handPosYVal').value;
-        const posZ = document.getElementById('handPosZVal').value;
-        const rotX = document.getElementById('handRotXVal').value;
-        const rotY = document.getElementById('handRotYVal').value;
-        const rotZ = document.getElementById('handRotZVal').value;
+        const posX = this.gi('handPosXVal').value;
+        const posY = this.gi('handPosYVal').value;
+        const posZ = this.gi('handPosZVal').value;
+        const rotX = this.gi('handRotXVal').value;
+        const rotY = this.gi('handRotYVal').value;
+        const rotZ = this.gi('handRotZVal').value;
         
         const copyText = `Position: (${posX}, ${posY}, ${posZ})\nRotation: (${rotX}°, ${rotY}°, ${rotZ}°)`;
         navigator.clipboard.writeText(copyText).then(() => {
@@ -161,8 +176,8 @@ export class DebugUI {
     }
     
     // Health debug buttons
-    const takeDamageBtn = document.getElementById('takeDamageBtn');
-    const healBtn = document.getElementById('healBtn');
+    const takeDamageBtn = this.gi('takeDamageBtn');
+    const healBtn = this.gi('healBtn');
     
     if (takeDamageBtn) {
       takeDamageBtn.addEventListener('click', () => {
@@ -183,7 +198,7 @@ export class DebugUI {
     }
     
     // Wood cheat button
-    const giveWoodBtn = document.getElementById('giveWoodBtn');
+    const giveWoodBtn = this.gi('giveWoodBtn');
     
     if (giveWoodBtn) {
       giveWoodBtn.addEventListener('click', () => {
@@ -214,10 +229,10 @@ export class DebugUI {
       playerMesh = this.game.player.mesh;
     } else if (this.game.player) {
       playerMesh = this.game.player;
-    } else if (window.gameInstance?.player?.mesh) {
-      playerMesh = window.gameInstance.player.mesh;
-    } else if (window.gameInstance?.player) {
-      playerMesh = window.gameInstance.player;
+    } else if ((window as any).gameInstance?.player?.mesh) {
+      playerMesh = (window as any).gameInstance.player.mesh;
+    } else if ((window as any).gameInstance?.player) {
+      playerMesh = (window as any).gameInstance.player;
     }
     
     if (!playerMesh) return;
@@ -229,10 +244,10 @@ export class DebugUI {
       stepHeight = this.game.player.characterController.stepHeight || 0.5;
     } else if (this.game.characterController) {
       stepHeight = this.game.characterController.stepHeight || 0.5;
-    } else if (window.gameInstance?.player?.characterController) {
-      stepHeight = window.gameInstance.player.characterController.stepHeight || 0.5;
-    } else if (window.gameInstance?.characterController) {
-      stepHeight = window.gameInstance.characterController.stepHeight || 0.5;
+    } else if ((window as any).gameInstance?.player?.characterController) {
+      stepHeight = (window as any).gameInstance.player.characterController.stepHeight || 0.5;
+    } else if ((window as any).gameInstance?.characterController) {
+      stepHeight = (window as any).gameInstance.characterController.stepHeight || 0.5;
     }
     
     // Create step height indicator cylinder
@@ -263,7 +278,7 @@ export class DebugUI {
   }
   
   updateStepVisual() {
-    const showStepVisual = document.getElementById('showStepVisual');
+    const showStepVisual = this.gi('showStepVisual');
     if (showStepVisual && showStepVisual.checked) {
       this.createStepVisual(); // Recreate with new height
     }
@@ -278,10 +293,10 @@ export class DebugUI {
         playerMesh = this.game.player.mesh;
       } else if (this.game.player) {
         playerMesh = this.game.player;
-      } else if (window.gameInstance?.player?.mesh) {
-        playerMesh = window.gameInstance.player.mesh;
-      } else if (window.gameInstance?.player) {
-        playerMesh = window.gameInstance.player;
+      } else if ((window as any).gameInstance?.player?.mesh) {
+        playerMesh = (window as any).gameInstance.player.mesh;
+      } else if ((window as any).gameInstance?.player) {
+        playerMesh = (window as any).gameInstance.player;
       }
       
       if (playerMesh) {
@@ -293,10 +308,10 @@ export class DebugUI {
           stepHeight = this.game.player.characterController.stepHeight || 0.5;
         } else if (this.game.characterController) {
           stepHeight = this.game.characterController.stepHeight || 0.5;
-        } else if (window.gameInstance?.player?.characterController) {
-          stepHeight = window.gameInstance.player.characterController.stepHeight || 0.5;
-        } else if (window.gameInstance?.characterController) {
-          stepHeight = window.gameInstance.characterController.stepHeight || 0.5;
+        } else if ((window as any).gameInstance?.player?.characterController) {
+          stepHeight = (window as any).gameInstance.player.characterController.stepHeight || 0.5;
+        } else if ((window as any).gameInstance?.characterController) {
+          stepHeight = (window as any).gameInstance.characterController.stepHeight || 0.5;
         }
         
         this.stepVisualMesh.position.y += stepHeight / 2;
@@ -309,12 +324,12 @@ export class DebugUI {
       return;
     }
     // Get current values from controls
-    const posX = parseFloat(document.getElementById('handPosXVal').value);
-    const posY = parseFloat(document.getElementById('handPosYVal').value);
-    const posZ = parseFloat(document.getElementById('handPosZVal').value);
-    const rotX = parseFloat(document.getElementById('handRotXVal').value) * Math.PI / 180;
-    const rotY = parseFloat(document.getElementById('handRotYVal').value) * Math.PI / 180;
-    const rotZ = parseFloat(document.getElementById('handRotZVal').value) * Math.PI / 180;
+    const posX = parseFloat(this.gi('handPosXVal').value);
+    const posY = parseFloat(this.gi('handPosYVal').value);
+    const posZ = parseFloat(this.gi('handPosZVal').value);
+    const rotX = parseFloat(this.gi('handRotXVal').value) * Math.PI / 180;
+    const rotY = parseFloat(this.gi('handRotYVal').value) * Math.PI / 180;
+    const rotZ = parseFloat(this.gi('handRotZVal').value) * Math.PI / 180;
     // Apply transform to held item
     player.heldItemMesh.position.set(posX, posY, posZ);
     player.heldItemMesh.rotation.set(rotX, rotY, rotZ);
@@ -332,7 +347,7 @@ export class DebugUI {
     ];
     
     debugElements.forEach(id => {
-      const element = document.getElementById(id);
+      const element = this.gi(id);
       if (element) {
         element.style.display = this.isVisible ? 'block' : 'none';
       }
@@ -380,30 +395,30 @@ export class DebugUI {
     const pos = player.heldItemMesh.position;
     const rot = player.heldItemMesh.rotation;
     // Update position sliders and inputs
-    document.getElementById('handPosX').value = pos.x.toFixed(2);
-    document.getElementById('handPosXVal').value = pos.x.toFixed(2);
-    document.getElementById('handPosY').value = pos.y.toFixed(2);
-    document.getElementById('handPosYVal').value = pos.y.toFixed(2);
-    document.getElementById('handPosZ').value = pos.z.toFixed(2);
-    document.getElementById('handPosZVal').value = pos.z.toFixed(2);
+    this.gi('handPosX').value = pos.x.toFixed(2);
+    this.gi('handPosXVal').value = pos.x.toFixed(2);
+    this.gi('handPosY').value = pos.y.toFixed(2);
+    this.gi('handPosYVal').value = pos.y.toFixed(2);
+    this.gi('handPosZ').value = pos.z.toFixed(2);
+    this.gi('handPosZVal').value = pos.z.toFixed(2);
     // Update rotation sliders and inputs (convert to degrees)
-    document.getElementById('handRotX').value = Math.round(rot.x * 180 / Math.PI);
-    document.getElementById('handRotXVal').value = Math.round(rot.x * 180 / Math.PI);
-    document.getElementById('handRotY').value = Math.round(rot.y * 180 / Math.PI);
-    document.getElementById('handRotYVal').value = Math.round(rot.y * 180 / Math.PI);
-    document.getElementById('handRotZ').value = Math.round(rot.z * 180 / Math.PI);
-    document.getElementById('handRotZVal').value = Math.round(rot.z * 180 / Math.PI);
+    this.gi('handRotX').value = String(Math.round((rot.x * 180) / Math.PI));
+    this.gi('handRotXVal').value = String(Math.round((rot.x * 180) / Math.PI));
+    this.gi('handRotY').value = String(Math.round((rot.y * 180) / Math.PI));
+    this.gi('handRotYVal').value = String(Math.round((rot.y * 180) / Math.PI));
+    this.gi('handRotZ').value = String(Math.round((rot.z * 180) / Math.PI));
+    this.gi('handRotZVal').value = String(Math.round((rot.z * 180) / Math.PI));
   }
 
   updateOccupiedSlotsDebug() {
-    const occupiedSlotsElement = document.getElementById('occupiedSlotsList');
+    const occupiedSlotsElement = this.gi('occupiedSlotsList');
     if (!occupiedSlotsElement || !this.game.buildingSystem) return;
     
     // Check if debug UI is visible
-    const debugContainer = document.getElementById('occupiedSlots');
+    const debugContainer = this.gi('occupiedSlots');
     if (!debugContainer || debugContainer.style.display === 'none') return;
     
-    const occupiedCells = Array.from(this.game.buildingSystem.occupiedCells);
+    const occupiedCells = Array.from(this.game.buildingSystem.occupiedCells) as string[];
     
     if (occupiedCells.length === 0) {
       occupiedSlotsElement.innerHTML = '<span style="color: #888;">None</span>';
@@ -413,7 +428,7 @@ export class DebugUI {
       
       // Group cells by wall for better readability
       const wallGroups = new Map();
-      occupiedCells.forEach(cellKey => {
+      occupiedCells.forEach((cellKey: string) => {
         const wall = this.game.buildingSystem.cellToWallMap.get(cellKey);
         if (wall) {
           const wallId = this.game.buildingSystem.builtWalls.indexOf(wall);
@@ -431,7 +446,7 @@ export class DebugUI {
         html += `<div style="margin-bottom: 8px;">`;
         html += `<div style="color: ${wallColor}; font-weight: bold;">Wall ${wallId + 1}:</div>`;
         html += `<div style="margin-left: 10px; font-size: 11px;">`;
-        cells.forEach(cellKey => {
+        cells.forEach((cellKey: string) => {
           html += `<div style="color: #ccc;">${cellKey}</div>`;
         });
         html += `</div></div>`;
@@ -450,7 +465,8 @@ export class DebugUI {
     // Update debug visualizations that need to track moving objects
     if (this.isVisible) {
       this.updateDogDetectionRange();
-      this.updateStepDetectionVisualization();
+      // NOTE: this method is not defined on DebugUI (pre-existing latent bug); preserved as-is.
+      (this as any).updateStepDetectionVisualization();
     }
   }
   
@@ -465,7 +481,7 @@ export class DebugUI {
     console.log(`Creating pivot dots for ${this.game.environment.loadedTrees.length} trees`);
     
     // Create a small sphere at each tree's pivot point
-    this.game.environment.loadedTrees.forEach((treeData, index) => {
+    this.game.environment.loadedTrees.forEach((treeData: any, index: number) => {
       const dotGeometry = new THREE.SphereGeometry(0.2, 8, 8);
       const dotMaterial = new THREE.MeshBasicMaterial({ 
         color: 0xff0000,
@@ -540,7 +556,8 @@ export class DebugUI {
   destroy() {
     this.hideTreePivotDots();
     this.hideDogDetectionRange();
-    this.hideStepDetectionVisualization();
+    // NOTE: this method is not defined on DebugUI (pre-existing latent bug); preserved as-is.
+    (this as any).hideStepDetectionVisualization();
     console.log('Debug UI destroyed');
   }
 }
