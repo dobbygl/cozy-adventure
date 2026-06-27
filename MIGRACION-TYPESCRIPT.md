@@ -73,7 +73,7 @@ Un archivo se da por migrado cuando:
 - [x] `src/HealthSystem.js`
 - [x] `src/ResourceSystem.js`
 - [x] `src/FarmingSystem.js`
-- [ ] `src/ItemUseSystem.js`
+- [x] `src/ItemUseSystem.js`
 - [ ] `src/BuildingResourceManager.js`
 - [ ] `src/LevelManager.js`
 - [ ] `src/BuildingSaveManager.js`
