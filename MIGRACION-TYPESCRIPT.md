@@ -88,7 +88,7 @@ Un archivo se da por migrado cuando:
 ### Ola 3 — Hojas con DOM/UI pesado (más `any`, document/style)
 - [x] `src/LoadingScreen.js`
 - [x] `src/InGameUI.js`
-- [ ] `src/BuildingUI.js`
+- [x] `src/BuildingUI.js`
 - [ ] `src/inventoryUI.js` (ya tiene JSDoc)
 - [ ] `src/MainMenu.js`
 - [ ] `src/DebugUI.js` (ojo: lee `window.game` inexistente; documentar, no "arreglar" aquí)
