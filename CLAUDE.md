@@ -18,6 +18,31 @@ CI lives in `.github/workflows/`: `ci.yml` runs `lint`, `typecheck`, `test`, and
 
 A broader improvement proposal (prioritized roadmap, known bugs, scenarios) lives in `docs/PROPUESTA-MEJORAS.md`; the multiplayer direction in `docs/PROPUESTA-MULTIJUGADOR.md`; the (completed) TypeScript migration log in `docs/MIGRACION-TYPESCRIPT.md`.
 
+## Commit conventions
+
+**Mandatory for every commit, no exceptions:**
+
+1. **Conventional Commits.** Subject line is `type(scope): description`.
+   - **type** (required): one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+   - **scope** (optional but encouraged): the area touched, e.g. `player`, `world`, `building`, `save`, `ui`, `deps`. Use a lowercase noun.
+   - **description**: imperative mood, lowercase start, no trailing period.
+   - Breaking changes: append `!` after the type/scope (`feat(save)!: ...`) and/or add a `BREAKING CHANGE:` footer.
+2. **English, always.** The subject and body are written in English (this is required even though chat/UX copy is Spanish). Do not mix languages.
+3. **Body** (optional): blank line after the subject, then wrap prose explaining the what/why. Bullets are fine.
+4. **Trailer:** commits authored by Claude end with the `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>` line.
+
+Example:
+
+```
+feat(player): add a three-phase jump with takeoff-synced animation
+
+Defer the jump impulse with a short windup so the physical takeoff lines up
+with the launch frame of the Mixamo Start clip; fall back to a single clip,
+then to a procedural squash, when the phase clips are absent.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+```
+
 ## What this is
 
 A 3D browser game (cozy survival/building) built on **Three.js 0.185.0**, written in **TypeScript (strict) ESM**, ~33 modules / ~18k lines in `src/` (migrated from JavaScript; see `docs/MIGRACION-TYPESCRIPT.md`). It was **exported from an AI playground platform** (hence `src/rosieControls.ts`, `src/rosieMobileControls.ts`, and the host scripts in `public/`). It is designed to run **embedded in a host page inside an iframe** and talks to `window.parent` via `postMessage`, and also runs standalone via the Vite dev server.

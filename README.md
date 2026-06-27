@@ -11,7 +11,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 
-[Features](#features) • [Getting started](#getting-started) • [Controls](#controls) • [Development](#development) • [Architecture](#architecture) • [Roadmap](#roadmap)
+[Features](#features) • [Getting started](#getting-started) • [Controls](#controls) • [Development](#development) • [Architecture](#architecture) • [Contributing](#contributing) • [Roadmap](#roadmap)
 
 </div>
 
@@ -82,6 +82,10 @@ The project is plain TypeScript ESM with a small toolchain. The quality gates ar
 > [!WARNING]
 > `three` is pinned to an exact version (`0.185.0`). Three.js ships breaking changes in minor releases and `three/addons` loaders must match the core version exactly, so bump core and addons together (and keep `@types/three` on the same version).
 
+## Contributing
+
+Contributions are welcome. Before committing, keep the quality gates green (`lint`, `typecheck`, `test`, `build`). Every commit message **must** follow [Conventional Commits](https://www.conventionalcommits.org/) and be written in **English** (mandatory). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guidelines.
+
 ## Project structure
 
 ```text
@@ -121,4 +125,5 @@ The project is moving toward a **persistent co-op multiplayer** experience: smal
 - [Three.js documentation](https://threejs.org/docs/)
 - [Vite guide](https://vite.dev/guide/)
 - [`CLAUDE.md`](CLAUDE.md): architecture, conventions, and gotchas
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): commit conventions and quality gates
 - [`docs/PROPUESTA-MEJORAS.md`](docs/PROPUESTA-MEJORAS.md): improvement roadmap and known bugs
