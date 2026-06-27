@@ -65,7 +65,7 @@ Un archivo se da por migrado cuando:
 - [x] Commitear `jsconfig.json` (strict on) + este documento. Mensaje: `build(ts): enable strict and add migration plan`.
 
 ### Ola 1 — Núcleo de datos con tests (prueba la tubería)
-- [ ] `src/inventory.js` (ya tiene `@ts-check` + JSDoc + tests; primer objetivo real)
+- [x] `src/inventory.js` (ya tiene `@ts-check` + JSDoc + tests; primer objetivo real)
 - [ ] `src/SaveSystem.js` (depende de inventory; tiene tests; actualizar `vitest.config.js`)
 
 ### Ola 2 — Hojas puras de lógica (sin deps internas)

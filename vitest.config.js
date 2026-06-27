@@ -11,7 +11,7 @@ export default defineConfig({
       provider: 'v8',
       // Report coverage only for the modules under test, so the number is honest
       // (a global figure over ~18k lines of render/UI code would be misleading).
-      include: ['src/inventory.js', 'src/SaveSystem.js', 'src/shared/rng.ts'],
+      include: ['src/inventory.ts', 'src/SaveSystem.js', 'src/shared/rng.ts'],
       reporter: ['text', 'html'],
     },
   },
