@@ -19,6 +19,21 @@ export class Player {
   axeHitAction: THREE.AnimationAction | null;
   handBone: THREE.Object3D | null = null;
   colliderOffset = 0;
+  // Jump animation state (clip is optional — physics jump works without it).
+  wasGrounded = false;
+  isPlayingJumpAnimation = false;
+  jumpAction: THREE.AnimationAction | null = null;
+  // Phase of the 3-phase jump (Start → Loop → Land), used only when those three
+  // clips are present. 'none' = grounded / single-clip / procedural path.
+  jumpPhase: 'none' | 'start' | 'loop' | 'land' = 'none';
+  // Windup edge tracking + the Start clip's launch time (clip-seconds from the
+  // crouch to the moment the body leaves the ground), computed lazily from the
+  // hips trajectory so the Start clip can be time-scaled to land on the impulse.
+  wasJumpWindup = false;
+  jumpStartLaunchTime = 0;
+  // Rest scale captured at takeoff, used by the procedural squash-stretch hop
+  // that plays when no jump clip is present (respects height slider).
+  jumpBaseScale = 2.2;
   // Debug-only reference the original code logs; always undefined.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   player?: any;
@@ -135,6 +150,16 @@ async load(): Promise<void> {
       this.loadFBXAnimation('assets/Player_Run_Right.fbx', 'Player_Run_Right'),
       this.loadFBXAnimation('assets/Player_Run_Left.fbx', 'Player_Run_Left'),
       this.loadFBXAnimation('assets/Item_Player_Axe_Hit.fbx', 'Player_Axe_Hit'),
+      // Optional: drop a Mixamo "Jump" (same rig) at this path. Tolerant of a
+      // missing file so startup never fails — the physics jump works regardless.
+      this.loadFBXAnimation('assets/Player_Jump.fbx', 'Player_Jump').catch(() => {
+        console.warn('assets/Player_Jump.fbx not found — jump will be physics-only until you add it.');
+      }),
+      // Optional 3-phase Mixamo jump. If ALL three are present they take priority
+      // over the single Player_Jump clip above. Tolerant of missing files.
+      this.loadFBXAnimation('assets/Player_Jump_Start.fbx', 'Player_Jump_Start').catch(() => {}),
+      this.loadFBXAnimation('assets/Player_Jump_Loop.fbx', 'Player_Jump_Loop').catch(() => {}),
+      this.loadFBXAnimation('assets/Player_Jump_Land.fbx', 'Player_Jump_Land').catch(() => {}),
     ]);
   }
   async loadFBXAnimation(url: string, animationName: string): Promise<void> {
@@ -254,8 +279,88 @@ async load(): Promise<void> {
         if (this.currentAction === this.animations['Player_Idle']) return 'idle';
         return null;
       };
+      // --- Jump / airborne handling ---
+      // playerController.update() already ran this frame, so isGrounded reflects
+      // the post-physics state. Detect takeoff/landing edges off our own copy.
+      const grounded = playerController.isGrounded !== false;
+      // Preferred: a 3-phase Mixamo jump (Start → airborne Loop → Land), which
+      // fills any airtime cleanly. Falls back to a single Player_Jump clip, then
+      // to the procedural squash, then to nothing.
+      const has3PhaseJump = !!(
+        this.animations['Player_Jump_Start'] &&
+        this.animations['Player_Jump_Loop'] &&
+        this.animations['Player_Jump_Land']
+      );
+      const hasSingleJump = !!this.animations['Player_Jump'];
+      const isJumpWindup = playerController.isJumpWindup === true;
+
+      // Windup start (3-phase only): begin the crouch-then-launch clip the moment
+      // Space is pressed, sped up so its launch frame lands exactly on the
+      // controller's deferred impulse — body and animation leave the ground together.
+      if (has3PhaseJump && isJumpWindup && !this.wasJumpWindup && this.jumpPhase === 'none') {
+        this.jumpBaseScale = this.mesh!.scale.y;
+        this.jumpPhase = 'start';
+        if (this.jumpStartLaunchTime <= 0) this.jumpStartLaunchTime = this.computeJumpLaunchTime();
+        const prep = playerController.jumpPrepTime || 0;
+        const ts = this.jumpStartLaunchTime > 0 && prep > 0 ? this.jumpStartLaunchTime / prep : 1;
+        this.crossfadeJump('Player_Jump_Start', false, ts);
+      }
+      this.wasJumpWindup = isJumpWindup;
+
+      if (this.wasGrounded && !grounded) {
+        // Takeoff — capture the rest scale (for the procedural fallback).
+        this.jumpBaseScale = this.mesh!.scale.y;
+        if (has3PhaseJump) {
+          if (this.jumpPhase === 'none') {
+            // Airborne without a windup → a fall (walked off a ledge), not a
+            // deliberate jump: skip the launch crouch, go straight to the loop.
+            this.jumpPhase = 'loop';
+            this.crossfadeJump('Player_Jump_Loop', true);
+          }
+          // Otherwise the windup already started Start; let it play out.
+        } else if (hasSingleJump) {
+          // Sync the single clip to the theoretical flat-ground airtime.
+          const gravity = playerController.gravity || 25;
+          const jumpForce = playerController.jumpForce || 11;
+          this.playJumpAnimation((2 * jumpForce) / gravity);
+        }
+      } else if (!this.wasGrounded && grounded) {
+        // Landing.
+        if (has3PhaseJump) {
+          this.jumpPhase = 'land';
+          this.crossfadeJump('Player_Jump_Land', false);
+        } else {
+          this.isPlayingJumpAnimation = false;
+          if (!hasSingleJump && this.mesh) {
+            this.mesh.scale.set(this.jumpBaseScale, this.jumpBaseScale, this.jumpBaseScale);
+          }
+        }
+      }
+      this.wasGrounded = grounded;
+
+      // 3-phase progression (polled; no event-listener lifecycle to manage).
+      if (has3PhaseJump && this.jumpPhase === 'start' && !grounded) {
+        const start = this.animations['Player_Jump_Start'];
+        // A finished LoopOnce action clamps at its duration — advance once done.
+        if (start.time >= start.getClip().duration - 1e-3) {
+          this.jumpPhase = 'loop';
+          this.crossfadeJump('Player_Jump_Loop', true);
+        }
+      } else if (has3PhaseJump && this.jumpPhase === 'land' && grounded) {
+        const land = this.animations['Player_Jump_Land'];
+        // Movement cancels the landing recovery so controls stay responsive.
+        if (this.isMoving || land.time >= land.getClip().duration - 1e-3) {
+          this.jumpPhase = 'none';
+        }
+      }
+
+      // Suppress the ground walk/run/idle selection while a jump clip owns the pose.
+      const inJump = has3PhaseJump ? this.jumpPhase !== 'none' : hasSingleJump && !grounded;
+
       // Determine movement direction for animation selection
-      if (this.isMoving) {
+      if (inJump) {
+        // A jump clip owns the pose; no ground-movement selection right now.
+      } else if (this.isMoving) {
         // Use standard walk/run animations for all movement types
         const targetAnimation = playerController.isRunning ? 'Player_Run' : 'Player_Walking';
         if (!this.currentAction || this.currentAction !== this.animations[targetAnimation]) {
@@ -264,7 +369,7 @@ async load(): Promise<void> {
       } else {
         // Standing still - maintain the same scale (always normal, no flipping)
         this.mesh!.scale.x = Math.abs(this.mesh!.scale.x); // Always normal scale
-        
+
         if (wasMoving || !this.currentAction || this.currentAction !== this.animations['Player_Idle']) {
           this.playAnimation('Player_Idle', true);
         }
@@ -291,6 +396,21 @@ async load(): Promise<void> {
           // Running animations: keep natural speed without scaling
           this.currentAction.setEffectiveTimeScale(1.0);
         }
+      }
+
+      // Procedural squash-stretch while airborne with NO jump clip at all, so
+      // the hop still reads visually. Any real clip (single or 3-phase) wins.
+      if (!grounded && !has3PhaseJump && !hasSingleJump && this.mesh) {
+        const base = this.jumpBaseScale;
+        const jumpForce = playerController.jumpForce || 11;
+        // +1 at takeoff (fast up) → 0 at apex → -1 in fast fall.
+        const vNorm = Math.max(-1, Math.min(1, (playerController.velocity.y || 0) / jumpForce));
+        const stretch = vNorm * 0.18; // taller+thinner rising, shorter+wider falling
+        this.mesh.scale.set(
+          base * (1 - stretch * 0.5),
+          base * (1 + stretch),
+          base * (1 - stretch * 0.5)
+        );
       }
     }
   }
@@ -966,6 +1086,99 @@ async load(): Promise<void> {
     }
   }
   
+  // Crossfade into one phase of the 3-phase jump. loop=true for the airborne
+  // hold (repeats to fill any airtime); loop=false plays once and clamps on the
+  // final frame (Start / Land). timeScale lets the Start clip be sped up so its
+  // launch frame coincides with the deferred physics impulse.
+  crossfadeJump(name: string, loop: boolean, timeScale = 1): void {
+    const action = this.animations[name];
+    if (!action) return;
+    if (this.currentAction && this.currentAction !== action) {
+      this.currentAction.fadeOut(0.12);
+    }
+    action.reset();
+    action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+    action.clampWhenFinished = !loop;
+    action.setEffectiveTimeScale(timeScale);
+    action.fadeIn(0.12);
+    action.play();
+    this.currentAction = action;
+  }
+
+  // Clip-time (seconds) at which the Start jump animation's body leaves the
+  // ground: the first moment AFTER the deepest crouch that the hips climb back
+  // to their resting height. Used to time-scale Start so its launch lands on
+  // the physics impulse. Returns 0 if it can't be determined.
+  computeJumpLaunchTime(): number {
+    const action = this.animations['Player_Jump_Start'];
+    if (!action) return 0;
+    const clip = action.getClip();
+    const hips = clip.tracks.find((t) => /Hips\.position$/.test(t.name));
+    if (!hips || hips.times.length < 2) return 0;
+    const n = hips.times.length;
+    const yAt = (i: number) => hips.values[i * 3 + 1];
+    const rest = yAt(0);
+    let minI = 0;
+    for (let i = 1; i < n; i++) if (yAt(i) < yAt(minI)) minI = i;
+    for (let i = minI; i < n; i++) {
+      if (yAt(i) >= rest) return hips.times[i];
+    }
+    return 0;
+  }
+
+  playJumpAnimation(airtime?: number) {
+    // Don't restart if a jump clip is already playing.
+    if (this.isPlayingJumpAnimation) {
+      return false;
+    }
+
+    // No clip available (e.g. Player_Jump.fbx not added yet) — physics jump
+    // still works; we just have no animation to play.
+    if (!this.animations['Player_Jump']) {
+      return false;
+    }
+
+    this.isPlayingJumpAnimation = true;
+
+    // Fade out whatever is currently playing.
+    if (this.currentAction) {
+      this.currentAction.fadeOut(0.1);
+    }
+
+    // Play the jump clip once and hold the final pose until we land.
+    const jumpAction = this.animations['Player_Jump'];
+    jumpAction.reset();
+    jumpAction.setLoop(THREE.LoopOnce, 1);
+    jumpAction.clampWhenFinished = true;
+    // Sync the clip's playback to the physics airtime so the whole jump
+    // (takeoff → apex → land) plays in step with the hop instead of being cut
+    // off mid-clip on landing. Set after reset() so it isn't reverted.
+    if (airtime && airtime > 0) {
+      const clipDuration = jumpAction.getClip().duration;
+      if (clipDuration > 0) {
+        jumpAction.setEffectiveTimeScale(clipDuration / airtime);
+      }
+    }
+    jumpAction.fadeIn(0.1);
+    jumpAction.play();
+
+    this.jumpAction = jumpAction;
+    this.currentAction = jumpAction;
+
+    // Clear the lock if the clip finishes before we land (short airtime).
+    const mixer = this.mixer!;
+    const onJumpFinished = (event: any) => {
+      if (event.action === jumpAction) {
+        this.isPlayingJumpAnimation = false;
+        this.jumpAction = null;
+        mixer.removeEventListener('finished', onJumpFinished);
+      }
+    };
+    mixer.addEventListener('finished', onJumpFinished);
+
+    return true;
+  }
+
   playAxeHitAnimation() {
     // Don't start new animation if already playing
     if (this.isPlayingAxeAnimation) {

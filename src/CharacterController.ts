@@ -12,9 +12,14 @@ export class ThirdPersonCharacterController {
   runSpeed: number;
   rotationSpeed: number;
   gravity: number;
+  jumpForce: number;
   velocity: THREE.Vector3;
   isGrounded: boolean;
   isRunning: boolean;
+  jumpKeyWasDown: boolean;
+  jumpPrepTime: number;
+  jumpWindupTimer: number;
+  isJumpWindup: boolean;
   collisionSystem: CollisionSystem | null;
   colliderOffset: number;
   keys: Record<string, boolean>;
@@ -39,11 +44,22 @@ export class ThirdPersonCharacterController {
     this.runSpeed = 10;
     this.rotationSpeed = 12;
     this.gravity = 25;
+    // Tunable: jump height ≈ jumpForce² / (2 * gravity) ≈ 2.4 units, airtime ≈ 0.88s.
+    // Cozy low hop. The windup speeds up the Start clip, so the 3-phase jump
+    // (Start → Loop → Land) still has room to breathe at this height.
+    this.jumpForce = 11;
 
     // State
     this.velocity = new THREE.Vector3();
     this.isGrounded = false; // Start with player falling until they hit ground
     this.isRunning = false;
+    this.jumpKeyWasDown = false; // Edge-trigger guard so holding Space doesn't auto-rejump
+    // Pre-launch windup: the jump impulse fires this long AFTER Space is pressed,
+    // so the physical takeoff lines up with the launch frame of the crouch-then-
+    // launch jump animation. Set to 0 for an instant (no-anticipation) jump.
+    this.jumpPrepTime = 0.22;
+    this.jumpWindupTimer = 0;
+    this.isJumpWindup = false;
     this.collisionSystem = null;
     this.colliderOffset = 0.0; // Default collider offset (feet position relative to character center)
 
@@ -75,6 +91,15 @@ export class ThirdPersonCharacterController {
     // Keyboard input
     document.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
+      // Stop Space from scrolling the page / triggering focused buttons, but
+      // never while the user is typing into a field (chat, name inputs, etc.).
+      if (e.code === 'Space') {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !target?.isContentEditable) {
+          e.preventDefault();
+        }
+      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -192,7 +217,29 @@ export class ThirdPersonCharacterController {
       this.velocity.z = 0;
     }
 
-    // Jumping removed
+    // Jump: edge-triggered (only on the keydown transition) and only when on the
+    // ground, so holding Space doesn't auto-rejump on landing. Pressing Space
+    // starts a short windup; the actual upward impulse fires when the windup
+    // elapses, so takeoff aligns with the animation's launch frame.
+    // updatePhysics() handles the gravity arc and ground snap from there.
+    const jumpPressed = !!this.keys['Space'];
+    if (jumpPressed && !this.jumpKeyWasDown && this.isGrounded && !this.isJumpWindup) {
+      this.isJumpWindup = true;
+      this.jumpWindupTimer = this.jumpPrepTime;
+    }
+    this.jumpKeyWasDown = jumpPressed;
+
+    if (this.isJumpWindup) {
+      this.jumpWindupTimer -= deltaTime;
+      if (this.jumpWindupTimer <= 0) {
+        this.isJumpWindup = false;
+        // Only launch if we're still grounded (e.g. didn't walk off a ledge mid-windup).
+        if (this.isGrounded) {
+          this.velocity.y = this.jumpForce;
+          this.isGrounded = false;
+        }
+      }
+    }
   }
 
   updatePhysics(deltaTime: number): void {
@@ -231,11 +278,17 @@ export class ThirdPersonCharacterController {
       this.character.position.add(horizontalMovement);
     }
 
-    // Apply vertical movement separately (gravity/jumping)
-    this.character.position.y += this.velocity.y * deltaTime;
-
-    // Ground collision using collision system
+    // Apply vertical movement (gravity / jumping) with a SWEPT ground check.
+    // We read the ground height *before* moving — while we're still at or above
+    // it, so the downward ray always finds it — then clamp the intended step.
+    // Without this, a fast descent (landing a jump, especially at a low
+    // framerate) can overshoot past the thin ~0.2u detection window in a single
+    // frame; the ray origin ends up below the surface, ground is never detected
+    // again, and the character tunnels through the floor.
     if (this.collisionSystem) {
+      const groundThreshold = 0.1;
+      const nextY = this.character.position.y + this.velocity.y * deltaTime;
+
       const collisionData = this.collisionSystem.checkGroundCollision(
         this.character.position,
         2.0, // Character height
@@ -243,30 +296,28 @@ export class ThirdPersonCharacterController {
       );
 
       if (collisionData.hasCollision) {
-        // Calculate distance from character feet to ground using adjustable offset
         // groundHeight is non-null whenever hasCollision is true.
-        const characterFeetY = this.character.position.y - this.colliderOffset;
-        const distanceToGround = characterFeetY - collisionData.groundHeight!;
+        const groundY = collisionData.groundHeight! + this.colliderOffset;
 
-        // Ground detection threshold - allow small tolerance for floating point precision
-        const groundThreshold = 0.1;
-
-        // Character is on ground if feet are at or below ground level and falling/stationary
-        if (distanceToGround <= groundThreshold && this.velocity.y <= 0) {
-          // Snap character to ground position using adjustable offset
-          this.character.position.y = collisionData.groundHeight! + this.colliderOffset;
+        if (this.velocity.y <= 0 && nextY <= groundY + groundThreshold) {
+          // Falling and the step would reach or cross the ground — land here
+          // instead of moving through it.
+          this.character.position.y = groundY;
           this.velocity.y = 0;
           this.isGrounded = true;
         } else {
-          // Character is above ground - continue falling
+          // Rising, or still clearly above the ground — apply the step normally.
+          this.character.position.y = nextY;
           this.isGrounded = false;
         }
       } else {
-        // No ground detected - character is falling
+        // No ground detected below - character is falling.
+        this.character.position.y = nextY;
         this.isGrounded = false;
       }
     } else {
       // No collision system available - default to falling
+      this.character.position.y += this.velocity.y * deltaTime;
       this.isGrounded = false;
     }
   }
