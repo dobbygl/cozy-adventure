@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type PlayerModelId, DEFAULT_PLAYER_MODEL, setSelectedPlayerModel } from './playerModel.js';
 
 export class MainMenu {
   // gameInstance is the Game (game.js, not yet migrated); typed loosely.
@@ -12,6 +13,8 @@ export class MainMenu {
   isVisible: boolean;
   floatingElements: THREE.Object3D[] = [];
   currentModalType?: 'load' | 'save';
+  /** Avatar chosen for a NEW game. Loaded saves restore their own model. */
+  selectedModel: PlayerModelId = DEFAULT_PLAYER_MODEL;
 
   constructor(gameInstance: any) {
     this.gameInstance = gameInstance;
@@ -44,7 +47,21 @@ export class MainMenu {
           <h1>Cozy Adventure</h1>
           <p class="subtitle">Explore • Build • Survive</p>
         </div>
-        
+
+        <div class="character-select" role="radiogroup" aria-label="Choose your character">
+          <span class="char-label">Character</span>
+          <div class="char-options">
+            <button type="button" class="char-option active" id="char-male" data-model="male" role="radio" aria-checked="true">
+              <span class="char-icon">🧑</span>
+              <span class="char-name">Male</span>
+            </button>
+            <button type="button" class="char-option" id="char-female" data-model="female" role="radio" aria-checked="false">
+              <span class="char-icon">👩</span>
+              <span class="char-name">Female</span>
+            </button>
+          </div>
+        </div>
+
         <div class="menu-buttons">
           <button class="menu-btn primary" id="start-game">
             <span class="btn-icon">🏠</span>
@@ -186,6 +203,71 @@ export class MainMenu {
         text-transform: uppercase;
       }
       
+      .character-select {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .char-label {
+        font-family: 'Nunito', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #8B4513;
+        opacity: 0.85;
+      }
+
+      .char-options {
+        display: flex;
+        gap: 12px;
+      }
+
+      .char-option {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 96px;
+        padding: 12px 10px;
+        background: linear-gradient(145deg, #F5DEB3, #DEB887);
+        border: 3px solid #CD853F;
+        border-radius: 18px;
+        color: #8B4513;
+        font-family: 'Nunito', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.5);
+      }
+
+      .char-option .char-icon {
+        font-size: 1.8rem;
+        line-height: 1;
+      }
+
+      .char-option:hover {
+        transform: translateY(-2px);
+        border-color: #DAA520;
+      }
+
+      .char-option.active {
+        background: linear-gradient(145deg, #FFFACD, #F0E68C);
+        border-color: #DAA520;
+        box-shadow:
+          0 6px 18px rgba(218, 165, 32, 0.45),
+          inset 0 2px 6px rgba(255, 255, 255, 0.7);
+      }
+
+      .char-option:focus-visible {
+        outline: 3px solid #DAA520;
+        outline-offset: 2px;
+      }
+
       .menu-buttons {
         display: flex;
         flex-direction: column;
@@ -615,7 +697,20 @@ export class MainMenu {
     startBtn.addEventListener('click', () => {
       this.startGame();
     });
-    
+
+    // Character selector (only affects a NEW game; loaded saves keep their model)
+    const charOptions = this.menuElement.querySelectorAll<HTMLElement>('.char-option');
+    charOptions.forEach((opt) => {
+      opt.addEventListener('click', () => {
+        this.selectedModel = opt.dataset.model === 'female' ? 'female' : 'male';
+        charOptions.forEach((o) => {
+          const isActive = o === opt;
+          o.classList.toggle('active', isActive);
+          o.setAttribute('aria-checked', String(isActive));
+        });
+      });
+    });
+
     // Continue Game button
     const continueBtn = this.qs('#continue-game');
     continueBtn.addEventListener('click', () => {
@@ -689,7 +784,10 @@ export class MainMenu {
   startGame() {
     console.log('Starting game...');
     this.hide();
-    
+
+    // Lock in the chosen avatar before the world (and Player) is built.
+    setSelectedPlayerModel(this.selectedModel);
+
     // Initialize the game if it hasn't been started yet
     if (this.gameInstance && typeof this.gameInstance.startGame === 'function') {
       this.gameInstance.startGame();

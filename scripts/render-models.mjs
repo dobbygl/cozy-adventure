@@ -18,7 +18,7 @@ const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 
 // model file -> { name, size, yaw, pitch }
 const MODELS = [
-  { file: 'Player_Model_New.glb', name: 'char', size: 1024, yaw: 0.45, pitch: 0.32 },
+  { file: 'Player_Model_Male.glb', name: 'char', size: 1024, yaw: 0.45, pitch: 0.32 },
   { file: 'dog_001.glb', name: 'dog', size: 1024, yaw: 0.7, pitch: 0.34 },
   { file: 'env_apple_tree.glb', name: 'apple-tree', size: 1024, yaw: 0.5, pitch: 0.28 },
   { file: 'build_wall.glb', name: 'build-wall', size: 1024, yaw: 0.7, pitch: 0.3 },

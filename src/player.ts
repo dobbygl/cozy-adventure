@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { getPlayerModelConfig } from './playerModel.js';
 
 export class Player {
   scene: THREE.Scene;
@@ -58,13 +59,14 @@ export class Player {
 async load(): Promise<void> {
     return new Promise((resolve, reject) => {
       const loader = new GLTFLoader();
-      
+      const modelConfig = getPlayerModelConfig();
+
       loader.load(
-        'assets/Player_Model_New.glb',
+        modelConfig.path,
         async (gltf) => {
           this.mesh = gltf.scene;
-          this.mesh.position.set(0, 6.1, 0); // Spawn at Y 6.1 as requested
-          this.mesh.scale.setScalar(2.2);
+          this.mesh.position.set(0, modelConfig.spawnY, 0);
+          this.mesh.scale.setScalar(modelConfig.scale);
           
           // Set up height adjustment slider
           this.setupHeightSlider();

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ItemStack } from './inventory.js';
 import { DEFAULT_WORLD_SEED } from './shared/rng';
+import { getSelectedPlayerModel, setSelectedPlayerModel } from './playerModel.js';
 
 /** Stored save categories keyed by their string id. */
 interface SaveCategories {
@@ -84,6 +85,7 @@ export class SaveSystem {
     // Save player data
     if (this.gameInstance.player && this.gameInstance.player.mesh) {
       gameData.categories[this.saveCategories.PLAYER] = {
+        modelId: getSelectedPlayerModel(),
         position: {
           x: this.gameInstance.player.mesh.position.x,
           y: this.gameInstance.player.mesh.position.y,
@@ -490,6 +492,9 @@ export class SaveSystem {
       if (!this.gameInstance.isGameStarted) {
         const savedSeed = saveData?.categories?.[this.saveCategories.WORLD_STATE]?.seed ?? DEFAULT_WORLD_SEED;
         const choppedTrees = saveData?.categories?.[this.saveCategories.ENVIRONMENT]?.choppedTrees ?? [];
+        // Restore the saved avatar BEFORE the Player is built (old saves without
+        // a modelId fall back to the default inside setSelectedPlayerModel).
+        setSelectedPlayerModel(saveData?.categories?.[this.saveCategories.PLAYER]?.modelId);
         await this.gameInstance.startGame(savedSeed, choppedTrees);
         // Wait a moment for game to fully initialize
         await new Promise(resolve => setTimeout(resolve, 1000));
