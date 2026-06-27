@@ -4,9 +4,59 @@ import { BuildingResourceManager } from './BuildingResourceManager.js';
 import { BuildableObjectsRegistry } from './BuildableObjectsRegistry.js';
 import { BuildingSaveManager } from './BuildingSaveManager.js';
 import { LevelManager } from './LevelManager.js';
+import type { Inventory, Item } from './inventory.js';
+import type { CollisionSystem } from './CollisionSystem.js';
+import type { BuildableObject } from './BuildableObjectsRegistry.js';
 
 export class BuildingSystem {
-  constructor(scene, camera, collisionSystem, inventory = null) {
+  scene: THREE.Scene;
+  camera: THREE.Camera;
+  collisionSystem: CollisionSystem;
+  inventory: Inventory | null;
+  objectsRegistry: BuildableObjectsRegistry;
+  buildableObjects: Record<string, BuildableObject>;
+  resourceManager: BuildingResourceManager;
+  saveManager: BuildingSaveManager;
+  levelManager: LevelManager;
+  gridSize: number;
+  gridExtent: number;
+  isBuilding: boolean;
+  previewMesh: THREE.Object3D | null;
+  wallMesh: THREE.Object3D | null;
+  builtWalls: THREE.Object3D[];
+  raycaster: THREE.Raycaster;
+  mouse: THREE.Vector2;
+  buildingMode: string;
+  selectedBuildObject: string;
+  wallCost: { wood: number };
+  currentRotation: number;
+  rotationSteps: number[];
+  currentRotationIndex: number;
+  debugIndicators: Map<string, any>;
+  showDebugIndicators: boolean;
+  animatingWalls: Set<THREE.Object3D>;
+  particleSystems: Map<any, any>;
+  player: any;
+  // Assigned during init()/updateLevelReferences() or in event handlers, not the constructor.
+  occupiedCells!: Set<string>;
+  cellToWallMap!: Map<string, THREE.Object3D>;
+  itemRegistry!: any;
+  gridHelper!: any;
+  selectionPreviews!: any;
+  keydownHandler!: (e: KeyboardEvent) => void;
+  keyupHandler!: (e: KeyboardEvent) => void;
+  selectionScreenKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+  cKeyPressed = false;
+  rKeyPressed = false;
+  vKeyPressed = false;
+  xKeyPressed = false;
+
+  constructor(
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    collisionSystem: CollisionSystem,
+    inventory: Inventory | null = null
+  ) {
     this.scene = scene;
     this.camera = camera;
     this.collisionSystem = collisionSystem;
@@ -96,19 +146,19 @@ async init() {
   
   // Removed initializeLevelSystem - now handled by LevelManager
   
-  createLevelGrid(level) {
+  createLevelGrid(level: number) {
     // Delegate to LevelManager
-    this.levelManager.createLevelGrid(level, this.isBuilding);
+    this.levelManager.createLevelGrid(level);
   }
   
-  getLevelY(level) {
+  getLevelY(level: number) {
     // Delegate to LevelManager
     return this.levelManager.getLevelY(level);
   }
   
-  switchToLevel(newLevel) {
+  switchToLevel(newLevel: number) {
     // Delegate to LevelManager
-    const success = this.levelManager.switchToLevel(newLevel, this.isBuilding);
+    const success = this.levelManager.switchToLevel(newLevel);
     
     if (success) {
       // Clear current preview to force recreation at new level
@@ -166,7 +216,7 @@ updateLevelReferences() {
     return this.levelManager.getLevelInfo();
   }
   // Method to set player reference
-  setPlayer(player) {
+  setPlayer(player: any) {
     this.player = player;
   }
   // Update grid position to follow player
@@ -271,13 +321,13 @@ updateLevelReferences() {
     console.log('Building system event listeners set up');
   }
   
-  updateMousePosition(event) {
+  updateMousePosition(event: MouseEvent) {
     // Convert mouse position to normalized device coordinates
     this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   }
   
-  isCursorOverUI(event) {
+  isCursorOverUI(event: { clientX: number; clientY: number }) {
     // Get the element directly under the cursor
     const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY);
     if (!elementUnderCursor) return false;
@@ -310,7 +360,7 @@ updateLevelReferences() {
     
     const allSelectors = [...uiSelectors, ...inventorySelectors];
     // Check if the element or any of its parents match UI selectors
-    let currentElement = elementUnderCursor;
+    let currentElement: HTMLElement | null = elementUnderCursor as HTMLElement;
     while (currentElement && currentElement !== document.body) {
       // Check by ID
       if (currentElement.id) {
@@ -361,7 +411,7 @@ updateLevelReferences() {
         if (currentElement.getAttribute('data-container') || 
             currentElement.getAttribute('data-index') ||
             currentElement.getAttribute('data-ui') === 'true' ||
-            currentElement.style.zIndex > 100) {
+            Number(currentElement.style.zIndex) > 100) {
           return true;
         }
       }
@@ -418,10 +468,10 @@ updateLevelReferences() {
         }
         
         // Update preview position and rotation with proper matrix updates
-        this.previewMesh.position.copy(gridPos);
-        this.previewMesh.rotation.y = this.currentRotation;
-        this.previewMesh.updateMatrixWorld(true); // Force matrix update
-        this.previewMesh.visible = true;
+        this.previewMesh!.position.copy(gridPos);
+        this.previewMesh!.rotation.y = this.currentRotation;
+        this.previewMesh!.updateMatrixWorld(true); // Force matrix update
+        this.previewMesh!.visible = true;
         
         // Enhanced collision detection for preview - check only current level
         const occupiedCells = this.getOccupiedCells(gridPos, this.currentRotation);
@@ -450,13 +500,13 @@ updateLevelReferences() {
         
         // Show/hide resource warning based on availability (only in build mode)
         if (!hasEnoughResources) {
-          this.resourceManager.showResourceWarning(this.mouse, this.camera);
+          this.resourceManager.showResourceWarning(this.mouse, this.camera as any);
         } else {
           this.resourceManager.hideResourceWarning();
         }
         
         // Change preview color based on validity AND resource availability
-        this.previewMesh.traverse((child) => {
+        this.previewMesh!.traverse((child: any) => {
           if (child.isMesh && child.material) {
             if (isInvalid || !hasEnoughResources) {
               child.material.color.setHex(0xff4444); // Red for invalid build or insufficient resources
@@ -484,13 +534,13 @@ updateLevelReferences() {
           this.createDeletePreview(targetObject);
           
           // Position preview at target object with proper matrix update
-          this.previewMesh.position.copy(targetObject.position);
-          this.previewMesh.rotation.copy(targetObject.rotation);
-          this.previewMesh.updateMatrixWorld(true); // Force matrix update
-          this.previewMesh.visible = true;
+          this.previewMesh!.position.copy(targetObject.position);
+          this.previewMesh!.rotation.copy(targetObject.rotation);
+          this.previewMesh!.updateMatrixWorld(true); // Force matrix update
+          this.previewMesh!.visible = true;
           
           // Orange color for valid break target
-          this.previewMesh.traverse((child) => {
+          this.previewMesh!.traverse((child: any) => {
             if (child.isMesh && child.material) {
               child.material.color.setHex(0xff8844); // Orange for valid break
               child.material.opacity = 0.8;
@@ -510,9 +560,9 @@ updateLevelReferences() {
       }
     }
   }
-  findBreakableParent(object) {
+  findBreakableParent(object: THREE.Object3D) {
     // For built walls, find the wall object in our builtWalls array
-    let current = object;
+    let current: THREE.Object3D | null = object;
     while (current && current !== this.scene) {
       // Check if this object is in our built walls array
       if (this.builtWalls.includes(current)) {
@@ -534,7 +584,7 @@ updateLevelReferences() {
     this.scene.add(this.previewMesh);
   }
   
-  createDeletePreview(targetObject) {
+  createDeletePreview(targetObject: THREE.Object3D) {
     // Remove existing preview if it exists
     if (this.previewMesh) {
       this.scene.remove(this.previewMesh);
@@ -548,21 +598,21 @@ updateLevelReferences() {
     this.scene.add(this.previewMesh);
   }
   
-  setupPreviewMaterial(mesh) {
+  setupPreviewMaterial(mesh: THREE.Object3D) {
     // Make preview materials transparent and ensure they're independent
-    mesh.traverse((child) => {
+    mesh.traverse((child: any) => {
       if (child.isMesh) {
         // Deep clone material to ensure complete independence
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material = child.material.map(mat => mat.clone());
+            child.material = child.material.map((mat: any) => mat.clone());
           } else {
             child.material = child.material.clone();
           }
           
           // Set preview-specific properties
           if (Array.isArray(child.material)) {
-            child.material.forEach(mat => {
+            child.material.forEach((mat: any) => {
               mat.transparent = true;
               mat.opacity = 0.7;
               mat.color.setHex(0x44ff44); // Green by default
@@ -613,7 +663,7 @@ updateLevelReferences() {
     }
   }
   
-  snapToGrid(worldPosition, targetY = null) {
+  snapToGrid(worldPosition: THREE.Vector3, targetY: number | null = null) {
     // Use current level Y if no target specified
     if (targetY === null) {
       targetY = this.getCurrentLevelY();
@@ -629,14 +679,14 @@ updateLevelReferences() {
     return new THREE.Vector3(gridX, targetY, gridZ);
   }
   
-  getCellKey(position) {
+  getCellKey(position: THREE.Vector3) {
     // Create unique key for grid cell with precise rounding
     const gridX = Math.round((position.x + 0.001) / this.gridSize); // Add tiny offset to handle floating point precision
     const gridZ = Math.round((position.z + 0.001) / this.gridSize);
     return `${gridX},${gridZ}`;
   }
   
-  getOccupiedCells(position, rotation) {
+  getOccupiedCells(position: THREE.Vector3, rotation: number) {
     // Get current build object to determine cell size
     const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
     const cellSize = currentBuildObject ? currentBuildObject.cellSize : 3.5;
@@ -644,22 +694,23 @@ updateLevelReferences() {
     // Use precise grid coordinate calculation to avoid floating point errors
     const gridX = Math.round((position.x + 0.001) / this.gridSize);
     const gridZ = Math.round((position.z + 0.001) / this.gridSize);
-    const occupiedCells = [];
-    
+    const occupiedCells: string[] = [];
+
     // Normalize rotation to handle floating point precision issues  
     const normalizedRotation = Math.round((rotation * 180 / Math.PI) / 90) * 90;
     // Handle negative rotations properly
     const positiveRotation = ((normalizedRotation % 360) + 360) % 360;
     
     // Check if cellSize is an object with width and height properties
-    let cellWidth, cellHeight;
+    let cellWidth: number;
+    let cellHeight: number;
     if (typeof cellSize === 'object' && cellSize.width && cellSize.height) {
       cellWidth = cellSize.width;
       cellHeight = cellSize.height;
       console.log(`Getting occupied cells for ${currentBuildObject?.name || 'wall'} (${cellWidth}x${cellHeight} cells) at position (${gridX}, ${gridZ}) with rotation ${positiveRotation}°`);
     } else {
       // Legacy support for numeric cellSize
-      cellWidth = cellSize;
+      cellWidth = cellSize as number;
       cellHeight = 1.0;
       console.log(`Getting occupied cells for ${currentBuildObject?.name || 'wall'} (${cellWidth} cells) at position (${gridX}, ${gridZ}) with rotation ${positiveRotation}°`);
     }
@@ -673,7 +724,14 @@ updateLevelReferences() {
     return occupiedCells;
   }
   
-  calculateRotatedCells(centerX, centerZ, width, height, rotation, occupiedCells) {
+  calculateRotatedCells(
+    centerX: number,
+    centerZ: number,
+    width: number,
+    height: number,
+    rotation: number,
+    occupiedCells: string[]
+  ) {
     // Calculate the range of cells relative to center
     const halfWidth = Math.floor(width / 2);
     const halfHeight = Math.floor(height / 2);
@@ -742,7 +800,7 @@ updateLevelReferences() {
     const occupiedCells = this.getOccupiedCells(buildPosition, this.currentRotation);
     
     // Enhanced collision detection: Check both cell occupation AND physical mesh intersection
-    const conflictingCells = [];
+    const conflictingCells: string[] = [];
     
     // 1. Check cell occupation only on current level
     occupiedCells.forEach(cellKey => {
@@ -794,7 +852,7 @@ updateLevelReferences() {
     };
     
     // CRITICAL: Set up collision detection for ALL mesh children with proper positioning
-    newWall.traverse((child) => {
+    newWall.traverse((child: any) => {
       if (child.isMesh) {
         // Mark each mesh as a collider
         child.userData = {
@@ -824,7 +882,7 @@ updateLevelReferences() {
     if (this.collisionSystem) {
       console.log('Adding wall to collision system...');
       console.log('Wall position:', newWall.position);
-      console.log('Wall has mesh children:', newWall.children.filter(child => child.isMesh).length);
+      console.log('Wall has mesh children:', newWall.children.filter((child: any) => child.isMesh).length);
       
       // Add the wall object itself to collision system with 'mesh' type for wall collision
       this.collisionSystem.addCollider(newWall, 'mesh');
@@ -878,7 +936,7 @@ updateLevelReferences() {
     
     console.log(`Built wall at ${buildPosition.x}, ${buildPosition.z} with rotation ${this.currentRotation.toFixed(2)}`);
     console.log('Wall userData:', newWall.userData);
-    console.log('Wall has mesh children:', newWall.children.filter(child => child.isMesh).length);
+    console.log('Wall has mesh children:', newWall.children.filter((child: any) => child.isMesh).length);
   }
   
   rotateWall() {
@@ -969,7 +1027,7 @@ updateLevelReferences() {
       </div>
       
       <div id="objectList" style="display: flex; flex-direction: column; gap: 12px;">
-        ${Object.entries(this.buildableObjects).map(([key, obj]) => `
+        ${Object.entries(this.buildableObjects).map(([key, obj]: [string, any]) => `
           <div class="object-card" data-object="${key}" style="
             background: ${this.selectedBuildObject === key ? 
               'linear-gradient(135deg, #DEB887 0%, #F5DEB3 50%, #DEB887 100%)' : 
@@ -1072,10 +1130,10 @@ updateLevelReferences() {
     document.addEventListener('keydown', this.selectionScreenKeyHandler);
     
     // Add click handlers to object cards
-    const objectCards = selectionScreen.querySelectorAll('.object-card');
-    objectCards.forEach(card => {
+    const objectCards = selectionScreen.querySelectorAll<HTMLElement>('.object-card');
+    objectCards.forEach((card) => {
       card.addEventListener('click', () => {
-        const objectKey = card.getAttribute('data-object');
+        const objectKey = card.getAttribute('data-object')!;
         this.selectBuildObject(objectKey);
       });
       
@@ -1100,7 +1158,7 @@ updateLevelReferences() {
     selectionScreen.style.display = 'block';
   }
   
-  selectBuildObject(objectKey) {
+  selectBuildObject(objectKey: string) {
     this.selectedBuildObject = objectKey;
     
     // Switch to build mode if currently in delete mode
@@ -1189,7 +1247,7 @@ updateLevelReferences() {
       console.log('No built wall found at cursor position');
     }
   }
-  breakObject(objectToBreak) {
+  breakObject(objectToBreak: THREE.Object3D) {
     if (!objectToBreak || !objectToBreak.userData.isBreakable) return;
     
     // CRITICAL: Double-check that wall is not already animating
@@ -1205,7 +1263,7 @@ updateLevelReferences() {
     this.playBreakAnimation(objectToBreak);
   }
   
-  playBreakAnimation(wall) {
+  playBreakAnimation(wall: THREE.Object3D) {
     console.log('🗑️ Starting break animation for wall at:', wall.position);
     
     // Mark wall as animating to prevent interaction
@@ -1217,7 +1275,7 @@ updateLevelReferences() {
     const originalRotation = wall.rotation.clone();
     
     // Clone materials to avoid affecting template or future walls
-    wall.traverse((child) => {
+    wall.traverse((child: any) => {
       if (child.isMesh && child.material) {
         child.material = child.material.clone();
       }
@@ -1235,7 +1293,7 @@ updateLevelReferences() {
       const progress = Math.min(elapsed / animationDuration, 1);
       
       // Easing function (ease-in-out)
-      const easeInOut = (t) => {
+      const easeInOut = (t: number) => {
         return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
       };
       
@@ -1251,7 +1309,7 @@ updateLevelReferences() {
       wall.rotation.z = originalRotation.z + Math.cos(progress * Math.PI * 2) * 0.05;
       
       // Fade out material
-      wall.traverse((child) => {
+      wall.traverse((child: any) => {
         if (child.isMesh && child.material) {
           if (!child.material.transparent) {
             child.material.transparent = true;
@@ -1272,7 +1330,7 @@ updateLevelReferences() {
     animateBreak();
   }
   
-  completeWallBreak(objectToBreak) {
+  completeWallBreak(objectToBreak: THREE.Object3D) {
     // Clean up building system tracking
     if (objectToBreak.userData.isBuildingWall) {
       // CRITICAL FIX: Find ALL cells that belonged to this specific wall
@@ -1400,7 +1458,7 @@ updateLevelReferences() {
     
     console.log('Entered building mode - Press V to exit, Escape to cancel');
     console.log('Building mode state:', this.isBuilding);
-    console.log('Current level:', this.currentLevel);
+    console.log('Current level:', this.levelManager.getCurrentLevel());
     console.log('Current level Y:', this.getCurrentLevelY());
   }
   
@@ -1607,7 +1665,7 @@ updateLevelReferences() {
     }
   }
   
-  createDebugIndicator(cellKey) {
+  createDebugIndicator(cellKey: string) {
     // Parse cell key to get grid coordinates
     const [gridX, gridZ] = cellKey.split(',').map(Number);
     
@@ -1631,7 +1689,7 @@ updateLevelReferences() {
     this.debugIndicators.set(cellKey, indicator);
   }
   
-  removeDebugIndicator(cellKey) {
+  removeDebugIndicator(cellKey: string) {
     const indicator = this.debugIndicators.get(cellKey);
     if (indicator) {
       this.scene.remove(indicator);
@@ -1659,7 +1717,7 @@ updateLevelReferences() {
     }
   }
   
-  checkPhysicalIntersection(position, rotation) {
+  checkPhysicalIntersection(position: THREE.Vector3, rotation: number) {
     // Check if the cells this object would occupy conflict with existing objects on current level only
     const newObjectCells = this.getOccupiedCells(position, rotation);
     const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
@@ -1675,7 +1733,7 @@ updateLevelReferences() {
     return false;
   }
   
-  playPlacementAnimation(wall) {
+  playPlacementAnimation(wall: THREE.Object3D) {
     // Mark wall as animating
     this.animatingWalls.add(wall);
     
@@ -1685,7 +1743,7 @@ updateLevelReferences() {
     const originalRotation = wall.rotation.clone();
     
     // Clone materials to avoid affecting template or future walls
-    wall.traverse((child) => {
+    wall.traverse((child: any) => {
       if (child.isMesh && child.material) {
         child.material = child.material.clone();
       }
@@ -1707,7 +1765,7 @@ updateLevelReferences() {
       const progress = Math.min(elapsed / animationDuration, 1);
       
       // Easing function (ease-out bounce)
-      const easeOutBounce = (t) => {
+      const easeOutBounce = (t: number) => {
         if (t < 1 / 2.75) {
           return 7.5625 * t * t;
         } else if (t < 2 / 2.75) {
@@ -1756,7 +1814,7 @@ updateLevelReferences() {
     animateWall();
   }
   
-  createWoodChipParticles(wall, position) {
+  createWoodChipParticles(wall: THREE.Object3D, position: THREE.Vector3) {
     const particleCount = 15;
     const particles = [];
     
@@ -1806,7 +1864,7 @@ updateLevelReferences() {
     this.animateParticles(particles);
   }
   
-  createDestructionParticles(wall, position) {
+  createDestructionParticles(wall: THREE.Object3D, position: THREE.Vector3) {
     const particleCount = 25; // More particles for destruction
     const particles = [];
     
@@ -1912,12 +1970,12 @@ updateLevelReferences() {
     return debris;
   }
   
-  animateParticles(particles) {
+  animateParticles(particles: any) {
     const animateFrame = () => {
       const currentTime = Date.now();
       let activeParticles = 0;
       
-      particles.forEach(particle => {
+      particles.forEach((particle: any) => {
         const elapsed = currentTime - particle.userData.startTime;
         const progress = elapsed / particle.userData.lifetime;
         
@@ -1967,10 +2025,10 @@ updateLevelReferences() {
     animateFrame();
   }
   
-  cleanupParticleSystem(wall) {
+  cleanupParticleSystem(wall: THREE.Object3D) {
     const particles = this.particleSystems.get(wall);
     if (particles) {
-      particles.forEach(particle => {
+      particles.forEach((particle: any) => {
         this.scene.remove(particle);
       });
       this.particleSystems.delete(wall);
@@ -2038,7 +2096,7 @@ updateLevelReferences() {
     if (!warningElement || warningElement.style.display === 'none') return;
     
     // Get current mouse position and add offset so text doesn't block cursor
-    const rect = this.camera.domElement?.getBoundingClientRect() || { left: 0, top: 0 };
+    const rect = (this.camera as any).domElement?.getBoundingClientRect() || { left: 0, top: 0 };
     const mouseX = ((this.mouse.x + 1) / 2) * window.innerWidth;
     const mouseY = ((-this.mouse.y + 1) / 2) * window.innerHeight;
     
@@ -2047,11 +2105,11 @@ updateLevelReferences() {
   }
   
   // Method to set inventory reference
-  setInventory(inventory) {
+  setInventory(inventory: Inventory | null) {
     this.inventory = inventory;
   }
   
-  returnResources(wall) {
+  returnResources(wall: THREE.Object3D) {
     if (!this.inventory || !wall.userData.isBuildingWall) return;
     
     // Default to regular wall for resource return
@@ -2070,7 +2128,8 @@ updateLevelReferences() {
     
     if (returnAmount > 0) {
       // Create a simple wood item directly since itemRegistry might not be working
-      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 };
+      // Loose item-like literal; cast to Item since only id/name/stackSize are read downstream.
+      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 } as Item;
       
       console.log(`  About to add ${returnAmount} wood to inventory...`);
       
@@ -2103,7 +2162,7 @@ updateLevelReferences() {
   }
   
   // Floating text notification system
-  showFloatingText(text, worldPosition, color = '#fff') {
+  showFloatingText(text: string, worldPosition: THREE.Vector3, color = '#fff') {
     // Convert world position to screen coordinates
     const screenPosition = this.worldToScreen(worldPosition);
     if (!screenPosition) return;
@@ -2132,7 +2191,7 @@ updateLevelReferences() {
     this.animateFloatingText(floatingText);
   }
   
-  worldToScreen(worldPosition) {
+  worldToScreen(worldPosition: THREE.Vector3) {
     // Convert 3D world position to 2D screen coordinates
     const vector = worldPosition.clone();
     vector.project(this.camera);
@@ -2147,7 +2206,7 @@ updateLevelReferences() {
     return { x: screenX, y: screenY };
   }
   
-  animateFloatingText(element) {
+  animateFloatingText(element: HTMLElement) {
     const startTime = Date.now();
     const duration = 2500; // 2.5 seconds
     const startY = parseFloat(element.style.top);
@@ -2158,7 +2217,7 @@ updateLevelReferences() {
       const progress = Math.min(elapsed / duration, 1);
       
       // Easing function (ease-out)
-      const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+      const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
       const easedProgress = easeOut(progress);
       
       // Update position (float upward)
@@ -2167,7 +2226,7 @@ updateLevelReferences() {
       
       // Fade out in the last 30% of animation
       const fadeProgress = Math.max(0, (progress - 0.7) / 0.3);
-      element.style.opacity = 1 - fadeProgress;
+      element.style.opacity = String(1 - fadeProgress);
       
       // Continue animation or clean up
       if (progress < 1) {
@@ -2184,7 +2243,7 @@ updateLevelReferences() {
   }
   
   // Method to set item registry reference for resource returns
-  setItemRegistry(itemRegistry) {
+  setItemRegistry(itemRegistry: any) {
     this.itemRegistry = itemRegistry;
   }
   
@@ -2203,7 +2262,7 @@ updateLevelReferences() {
     }, 100);
   }
   
-  create3DPreview(objectKey, buildObject) {
+  create3DPreview(objectKey: string, buildObject: any) {
     const previewContainer = document.getElementById(`preview-${objectKey}`);
     if (!previewContainer) {
       console.warn(`Preview container not found for ${objectKey}`);
@@ -2252,7 +2311,7 @@ updateLevelReferences() {
     previewModel.scale.setScalar(1.0);
     
     // Ensure materials are independent and visible
-    previewModel.traverse((child) => {
+    previewModel.traverse((child: any) => {
       if (child.isMesh && child.material) {
         child.material = child.material.clone();
         child.castShadow = false;
@@ -2324,7 +2383,7 @@ updateLevelReferences() {
   }
   
   // Getter methods to access built objects by type through the registry
-  getBuiltObjectsByType(objectType) {
+  getBuiltObjectsByType(objectType: string) {
     return this.objectsRegistry.getBuiltObjectsByType(objectType);
   }
   
@@ -2332,7 +2391,7 @@ updateLevelReferences() {
     return this.objectsRegistry.getAllBuiltObjects();
   }
   
-  getBuiltObjectCount(objectType) {
+  getBuiltObjectCount(objectType: string) {
     return this.objectsRegistry.getBuiltObjectCount(objectType);
   }
   
