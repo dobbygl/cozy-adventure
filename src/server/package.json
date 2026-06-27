@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Authoritative multiplayer server (one world per process) for cozy-adventure",
   "main": "dist/index.js",
+  "exports": {
+    "./testing": "./test/harness/startTestServer.ts"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",

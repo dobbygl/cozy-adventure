@@ -25,6 +25,7 @@
     "three": "0.185.0"
   },
   "devDependencies": {
+    "@cozy/server": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/three": "^0.185.0",
     "@vitest/coverage-v8": "^4.1.9",
