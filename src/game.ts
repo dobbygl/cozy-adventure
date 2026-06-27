@@ -116,7 +116,7 @@ export class Game {
     // Don't initialize the game world yet - wait for user to click "Start Game"
     console.log('Main menu and save system initialized. Game world will load when user starts the game.');
   }
-  async startGame(seed?: number | string) {
+  async startGame(seed?: number | string, choppedTreeIds?: string[]) {
     // Create and show loading screen first
     this.loadingScreen = new LoadingScreen();
     this.loadingScreen.setProgress(0, 'Starting game initialization...');
@@ -154,6 +154,11 @@ export class Game {
     // game gets a fresh random one. Either way the layout is deterministic from it.
     const worldSeed = seed ?? randomWorldSeed();
     this.environment = new Environment(this.scene!, this.collisionSystem, worldSeed);
+    // Exclude trees the player already chopped (from a loaded save) before generation,
+    // so they don't reappear. Must be set before create() builds the trees.
+    if (choppedTreeIds && choppedTreeIds.length) {
+      this.environment.choppedTreeIds = new Set(choppedTreeIds);
+    }
     this.environment.create();
     console.log(`World generated from seed: ${this.environment.seed}`);
     

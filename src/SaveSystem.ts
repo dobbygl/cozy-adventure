@@ -111,6 +111,8 @@ export class SaveSystem {
       gameData.categories[this.saveCategories.ENVIRONMENT] = {
         trees: this.serializeTrees(),
         rocks: this.serializeRocks(),
+        // Ids of trees the player chopped down, so they stay gone after reload.
+        choppedTrees: Array.from(this.gameInstance.environment.choppedTreeIds ?? []),
         pickupableItems: this.serializePickupableItems(),
         droppedItems: this.serializeDroppedItems()
       };
@@ -487,7 +489,8 @@ export class SaveSystem {
       // without a seed fall back to the fixed default (their original island).
       if (!this.gameInstance.isGameStarted) {
         const savedSeed = saveData?.categories?.[this.saveCategories.WORLD_STATE]?.seed ?? DEFAULT_WORLD_SEED;
-        await this.gameInstance.startGame(savedSeed);
+        const choppedTrees = saveData?.categories?.[this.saveCategories.ENVIRONMENT]?.choppedTrees ?? [];
+        await this.gameInstance.startGame(savedSeed, choppedTrees);
         // Wait a moment for game to fully initialize
         await new Promise(resolve => setTimeout(resolve, 1000));
       }

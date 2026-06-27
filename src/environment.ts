@@ -16,6 +16,8 @@ export class Environment {
   collisionSystem: CollisionSystem | null;
   /** The 32-bit numeric seed this world was generated from (persisted in the save). */
   seed: number;
+  /** Stable ids ("typeIndex-instanceIndex") of trees chopped down; excluded on (re)generation. */
+  choppedTreeIds: Set<string>;
   rng: Rng;
   treePositions!: { x: number; z: number; scale: number }[];
   loadedTrees!: TreeData[];
@@ -37,6 +39,7 @@ export class Environment {
     // In multiplayer the server owns this seed; for now it defaults to a fixed one.
     this.seed = toNumericSeed(seed);
     this.rng = createWorldRng(this.seed);
+    this.choppedTreeIds = new Set();
   }
 
   create() {
@@ -200,9 +203,16 @@ export class Environment {
         
         // Place multiple instances of this tree type
         for (let i = 0; i < treeConfig.count; i++) {
+          // Always run createTreeInstance so its rng draws and treePositions stay
+          // identical: that keeps the surviving trees in their exact spots. A tree
+          // chopped in the saved game is placed deterministically, then dropped here.
           const treeData = this.createTreeInstance(treeModel, treeConfig, typeIndex, i);
           if (treeData) {
-            this.loadedTrees.push(treeData);
+            if (this.choppedTreeIds.has(`${typeIndex}-${i}`)) {
+              this.scene.remove(treeData.mesh);
+            } else {
+              this.loadedTrees.push(treeData);
+            }
           }
         }
         
@@ -301,9 +311,12 @@ export class Environment {
         }
       });
       
+      // Stable, deterministic id so a chopped tree can be excluded on reload.
+      treeClone.userData.treeId = `${typeIndex}-${instanceIndex}`;
+
       // Add tree to scene
       this.scene.add(treeClone);
-      
+
       // Return tree data for collider creation
       return {
         mesh: treeClone,

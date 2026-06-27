@@ -388,9 +388,21 @@ export class TreeChoppingSystem {
   
   destroyTree(treeMesh: any): void {
     console.log('Tree destroyed!');
-    
+
     // Mark tree as being destroyed to prevent further chopping
     treeMesh.userData.isBeingDestroyed = true;
+
+    // Record the chop so it persists: the saved game stores these ids and excludes
+    // these trees when the world regenerates from its seed on reload.
+    const treeId = treeMesh.userData.treeId;
+    if (this.environment && treeId) {
+      this.environment.choppedTreeIds?.add(treeId);
+      if (Array.isArray(this.environment.loadedTrees)) {
+        this.environment.loadedTrees = this.environment.loadedTrees.filter(
+          (t: any) => t.mesh !== treeMesh
+        );
+      }
+    }
     
     // Remove tree health tracking
     this.treeHealth.delete(treeMesh);

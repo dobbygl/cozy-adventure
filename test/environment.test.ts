@@ -46,3 +46,13 @@ describe('Environment seed (persistence surface)', () => {
     expect(env.seed).toBe(toNumericSeed('world-1'));
   });
 });
+
+describe('Environment tree identity (chopped-tree persistence)', () => {
+  it('tags each placed tree with a stable "typeIndex-instanceIndex" id', () => {
+    const env = new Environment(new THREE.Scene(), null, 'seed-1');
+    (env as any).treePositions = [];
+    const model = new THREE.Object3D();
+    const data = (env as any).createTreeInstance(model, { scale: 6.5 }, 3, 7);
+    expect(data?.mesh.userData.treeId).toBe('3-7');
+  });
+});
