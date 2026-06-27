@@ -1,7 +1,26 @@
+import * as THREE from 'three';
 import { ItemStack } from './inventory.js';
 
+/** Stored save categories keyed by their string id. */
+interface SaveCategories {
+  PLAYER: string;
+  INVENTORY: string;
+  ENVIRONMENT: string;
+  BUILDINGS: string;
+  WORLD_STATE: string;
+}
+
 export class SaveSystem {
-  constructor(gameInstance) {
+  /** The orchestrating Game (still untyped JS, Ola 6); accessed loosely as `any`. */
+  gameInstance: any;
+  saveSlots: number;
+  currentSaveSlot: number;
+  maxCookieSize: number;
+  saveCategories: SaveCategories;
+  /** Interval handle for auto-save; set by enableAutoSave(). */
+  autoSaveInterval?: ReturnType<typeof setInterval> | null;
+
+  constructor(gameInstance: any) {
     this.gameInstance = gameInstance;
     this.saveSlots = 1; // Number of save slots available
     this.currentSaveSlot = 0;
@@ -51,7 +70,11 @@ export class SaveSystem {
 
   // Collect all game data for saving
   collectGameData() {
-    const gameData = {
+    const gameData: {
+      version: string;
+      timestamp: number;
+      categories: Record<string, any>;
+    } = {
       version: '1.0.0',
       timestamp: Date.now(),
       categories: {}
@@ -112,7 +135,7 @@ export class SaveSystem {
   // Serialize inventory for saving
   serializeInventory() {
     const inventory = this.gameInstance.inventory;
-    const serializedBackpack = {};
+    const serializedBackpack: Record<number, any> = {};
     
     // Check if inventory exists before serializing
     if (!inventory) {
@@ -139,7 +162,7 @@ export class SaveSystem {
     }
     
     // Serialize hotbar slots (the actual inventory uses 'hotbar', not 'hotbarSlots')
-    const serializedHotbar = {};
+    const serializedHotbar: Record<number, any> = {};
     if (inventory.hotbar && Array.isArray(inventory.hotbar)) {
       for (let i = 0; i < inventory.hotbar.length; i++) {
         const stack = inventory.hotbar[i];
@@ -163,10 +186,10 @@ export class SaveSystem {
 
   // Serialize trees for saving
   serializeTrees() {
-    const trees = [];
-    
+    const trees: any[] = [];
+
     if (this.gameInstance.environment && this.gameInstance.environment.trees) {
-      this.gameInstance.environment.trees.forEach((tree, index) => {
+      this.gameInstance.environment.trees.forEach((tree: any, index: number) => {
         if (tree && tree.position) {
           trees.push({
             id: index,
@@ -198,10 +221,10 @@ export class SaveSystem {
 
   // Serialize rocks and environmental objects
   serializeRocks() {
-    const rocks = [];
-    
+    const rocks: any[] = [];
+
     if (this.gameInstance.environment && this.gameInstance.environment.rocks) {
-      this.gameInstance.environment.rocks.forEach((rock, index) => {
+      this.gameInstance.environment.rocks.forEach((rock: any, index: number) => {
         if (rock && rock.position) {
           rocks.push({
             id: index,
@@ -231,10 +254,10 @@ export class SaveSystem {
 
   // Serialize pickupable items
   serializePickupableItems() {
-    const items = [];
+    const items: any[] = [];
     
     if (this.gameInstance.pickupableItems) {
-      this.gameInstance.pickupableItems.forEach((item, index) => {
+      this.gameInstance.pickupableItems.forEach((item: any, index: number) => {
         // Skip items that have been marked as removed or picked up
         if (item && item.position && item.userData && !item.userData.isRemoved) {
           // Double-check item still exists in scene
@@ -268,10 +291,10 @@ export class SaveSystem {
   }
   // Serialize dropped items from ItemDropSystem
   serializeDroppedItems() {
-    const items = [];
+    const items: any[] = [];
     
     if (this.gameInstance.itemDropSystem && this.gameInstance.itemDropSystem.droppedItems) {
-      this.gameInstance.itemDropSystem.droppedItems.forEach((item, index) => {
+      this.gameInstance.itemDropSystem.droppedItems.forEach((item: any, index: number) => {
         // Skip items that have been marked as removed or picked up
         if (item && item.position && item.userData && !item.userData.isRemoved) {
           // Double-check item still exists in scene
@@ -328,7 +351,7 @@ export class SaveSystem {
       console.log(`Serializing ${allBuiltObjects.length} buildings of all types...`);
       
       // Add level information to each building
-      allBuiltObjects.forEach((building, index) => {
+      allBuiltObjects.forEach((building: any, index: number) => {
         // Calculate building level based on Y position if level manager exists
         if (levelManager && typeof building.position.y === 'number') {
           building.level = this.calculateBuildingLevel(building.position.y, levelManager);
@@ -344,14 +367,14 @@ export class SaveSystem {
     }
     
     // Fallback to legacy method for backward compatibility
-    const buildings = [];
-    
+    const buildings: any[] = [];
+
     if (this.gameInstance.buildingSystem.builtWalls) {
       console.log(`Falling back to legacy serialization method for ${this.gameInstance.buildingSystem.builtWalls.length} buildings...`);
       
-      this.gameInstance.buildingSystem.builtWalls.forEach((building, index) => {
+      this.gameInstance.buildingSystem.builtWalls.forEach((building: any, index: number) => {
         if (building && building.position) {
-          const buildingData = {
+          const buildingData: any = {
             id: index,
             type: building.userData?.buildingType || building.userData?.type || 'wall',
             subType: building.userData?.subType || null,
@@ -397,7 +420,7 @@ export class SaveSystem {
   }
 
   // Save data in chunks if too large for single cookie
-  saveDataInChunks(slotNumber, data) {
+  saveDataInChunks(slotNumber: number, data: string) {
     // Calculate safe chunk size accounting for encoding overhead and cookie name
     const cookieNameOverhead = `cozyAdventure_save_${slotNumber}_chunk_999`.length + 10; // Extra safety margin
     const safeChunkSize = Math.floor(this.maxCookieSize * 0.75); // 75% of max size for safety
@@ -433,7 +456,7 @@ export class SaveSystem {
   }
 
   // Save metadata about the save file
-  saveMetadata(slotNumber) {
+  saveMetadata(slotNumber: number) {
     const metadata = {
       slotNumber: slotNumber,
       timestamp: Date.now(),
@@ -447,7 +470,7 @@ export class SaveSystem {
   }
 
   // Load game from specified slot
-  async loadGame(slotNumber = this.currentSaveSlot) {
+  async loadGame(slotNumber: number = this.currentSaveSlot): Promise<boolean> {
     try {
       console.log(`Loading game from slot ${slotNumber}...`);
       
@@ -475,7 +498,7 @@ export class SaveSystem {
   }
 
   // Load game data from cookies
-  loadGameData(slotNumber) {
+  loadGameData(slotNumber: number) {
     try {
       // Check if data is chunked
       const chunkCount = this.getCookie(`cozyAdventure_save_${slotNumber}_chunks`);
@@ -516,7 +539,7 @@ export class SaveSystem {
       // Attempt to parse JSON with error handling
       try {
         return JSON.parse(rawData);
-      } catch (parseError) {
+      } catch (parseError: any) {
         console.error('JSON parse error details:', {
           error: parseError.message,
           dataLength: rawData.length,
@@ -545,7 +568,7 @@ export class SaveSystem {
   }
 
   // Restore game data from save
-  async restoreGameData(saveData) {
+  async restoreGameData(saveData: any): Promise<void> {
     if (!saveData.categories) {
       console.error('No save categories found in save data');
       return;
@@ -590,7 +613,7 @@ export class SaveSystem {
   }
 
   // Restore player data
-  restorePlayerData(playerData) {
+  restorePlayerData(playerData: any) {
     if (this.gameInstance.player && this.gameInstance.player.mesh && playerData.position) {
       this.gameInstance.player.mesh.position.set(
         playerData.position.x,
@@ -624,7 +647,7 @@ export class SaveSystem {
   }
 
   // Restore inventory data
-  async restoreInventoryData(inventoryData) {
+  async restoreInventoryData(inventoryData: any): Promise<void> {
     if (!this.gameInstance.inventory || !inventoryData) {
       console.warn('Inventory or inventory data not found during restore');
       return;
@@ -644,7 +667,7 @@ export class SaveSystem {
     // Restore backpack slots
     if (inventoryData.backpack) {
       console.log('Restoring backpack items...');
-      for (const [slotIndex, slotData] of Object.entries(inventoryData.backpack)) {
+      for (const [slotIndex, slotData] of Object.entries<any>(inventoryData.backpack)) {
         if (!this.gameInstance.itemRegistry) {
           console.error('ItemRegistry not found during backpack restore');
           continue;
@@ -671,7 +694,7 @@ export class SaveSystem {
     // Restore hotbar slots
     if (inventoryData.hotbar) {
       console.log('Restoring hotbar items...');
-      for (const [slotIndex, slotData] of Object.entries(inventoryData.hotbar)) {
+      for (const [slotIndex, slotData] of Object.entries<any>(inventoryData.hotbar)) {
         if (!this.gameInstance.itemRegistry) {
           console.error('ItemRegistry not found during hotbar restore');
           continue;
@@ -714,28 +737,28 @@ export class SaveSystem {
   }
 
   // Restore environment data
-  async restoreEnvironmentData(environmentData) {
+  async restoreEnvironmentData(environmentData: any): Promise<void> {
     // This is a simplified restoration - full implementation would 
     // require more complex environment management
     console.log('Environment data loaded (trees, rocks, items)');
     
     // Restore pickupable items
     if (environmentData.pickupableItems) {
-      environmentData.pickupableItems.forEach(itemData => {
+      environmentData.pickupableItems.forEach((itemData: any) => {
         this.restorePickupableItem(itemData);
       });
     }
     // Restore dropped items
     if (environmentData.droppedItems) {
       console.log(`Restoring ${environmentData.droppedItems.length} dropped items...`);
-      environmentData.droppedItems.forEach(itemData => {
+      environmentData.droppedItems.forEach((itemData: any) => {
         this.restoreDroppedItem(itemData);
       });
     }
   }
 
   // Restore a pickupable item
-  restorePickupableItem(itemData) {
+  restorePickupableItem(itemData: any) {
     if (!this.gameInstance.itemDropSystem || !itemData.itemId) {
       console.warn('ItemDropSystem or itemId missing during item restore');
       return;
@@ -785,7 +808,7 @@ export class SaveSystem {
     }
   }
   // Restore a dropped item
-  async restoreDroppedItem(itemData) {
+  async restoreDroppedItem(itemData: any): Promise<void> {
     if (!this.gameInstance.itemDropSystem || !itemData.itemId) {
       console.warn('ItemDropSystem or itemId missing during dropped item restore');
       return;
@@ -852,7 +875,7 @@ export class SaveSystem {
   }
 
   // Restore building data
-  async restoreBuildingData(buildingData) {
+  async restoreBuildingData(buildingData: any): Promise<void> {
     if (!this.gameInstance.buildingSystem || !buildingData.structures) {
       console.warn('Building system or building data not found during restore');
       return;
@@ -884,7 +907,7 @@ export class SaveSystem {
     
     // Clear from legacy builtWalls array
     if (buildingSystem.builtWalls && Array.isArray(buildingSystem.builtWalls)) {
-      buildingSystem.builtWalls.forEach(building => {
+      buildingSystem.builtWalls.forEach((building: any) => {
         if (building && building.parent) {
           building.parent.remove(building);
         }
@@ -913,7 +936,7 @@ export class SaveSystem {
     console.log('All existing buildings cleared');
   }
   // Restore individual building
-  async restoreBuilding(buildingInfo) {
+  async restoreBuilding(buildingInfo: any): Promise<void> {
     const buildingSystem = this.gameInstance.buildingSystem;
     const buildingType = buildingInfo.type;
     const buildingLevel = buildingInfo.level || 0; // Default to ground level if no level saved
@@ -1011,7 +1034,7 @@ export class SaveSystem {
     }
     
     // Set up breakable state for all child meshes
-    building.traverse((child) => {
+    building.traverse((child: any) => {
       if (child.isMesh) {
         child.userData = {
           ...child.userData,
@@ -1038,7 +1061,7 @@ export class SaveSystem {
     console.log(`Restored ${buildingType} at level ${buildingInfo.level || 0} position (${buildingInfo.position.x.toFixed(1)}, ${buildingInfo.position.y.toFixed(1)}, ${buildingInfo.position.z.toFixed(1)})`);
   }
   // Register restored building with all tracking systems
-  registerRestoredBuilding(building, buildingType, buildingInfo) {
+  registerRestoredBuilding(building: THREE.Object3D, buildingType: string, buildingInfo: any) {
     const buildingSystem = this.gameInstance.buildingSystem;
     
     // Add to legacy walls array (for backward compatibility)
@@ -1096,7 +1119,7 @@ export class SaveSystem {
     }
   }
   // Helper method to calculate occupied cells for a restored building
-  getOccupiedCellsForBuilding(buildingInfo, buildingSystem) {
+  getOccupiedCellsForBuilding(buildingInfo: any, buildingSystem: any): string[] {
     const position = new THREE.Vector3(
       buildingInfo.position.x,
       buildingInfo.position.y,
@@ -1117,7 +1140,7 @@ export class SaveSystem {
     // Calculate occupied cells similar to BuildingSystem.getOccupiedCells
     const gridX = Math.round((position.x + 0.001) / gridSize);
     const gridZ = Math.round((position.z + 0.001) / gridSize);
-    const occupiedCells = [];
+    const occupiedCells: string[] = [];
     
     // Handle different cell size formats
     let cellWidth, cellHeight;
@@ -1147,7 +1170,14 @@ export class SaveSystem {
     return occupiedCells;
   }
   // Helper method for calculating rotated cells during restore
-  calculateRotatedCellsForRestore(centerX, centerZ, width, height, rotation, occupiedCells) {
+  calculateRotatedCellsForRestore(
+    centerX: number,
+    centerZ: number,
+    width: number,
+    height: number,
+    rotation: number,
+    occupiedCells: string[]
+  ) {
     const halfWidth = Math.floor(width / 2);
     const halfHeight = Math.floor(height / 2);
     
@@ -1192,7 +1222,7 @@ export class SaveSystem {
     });
   }
   // Helper method to calculate which level a building is on based on Y position
-  calculateBuildingLevel(yPosition, levelManager) {
+  calculateBuildingLevel(yPosition: number, levelManager: any): number {
     if (!levelManager || !levelManager.levelHeight) {
       return 0; // Default to ground level
     }
@@ -1228,13 +1258,13 @@ export class SaveSystem {
   }
 
   // Get metadata for a save slot
-  getSaveMetadata(slotNumber) {
+  getSaveMetadata(slotNumber: number) {
     const metadataString = this.getCookie(`cozyAdventure_meta_${slotNumber}`);
     return metadataString ? JSON.parse(metadataString) : null;
   }
 
   // Delete a save slot
-  deleteSave(slotNumber) {
+  deleteSave(slotNumber: number): boolean {
     try {
       // Delete main save data
       this.deleteCookie(`cozyAdventure_save_${slotNumber}`);
@@ -1260,7 +1290,7 @@ export class SaveSystem {
   }
 
   // Cookie utility functions with localStorage fallback
-  setCookie(name, value, days) {
+  setCookie(name: string, value: string, days: number) {
     try {
       const expires = new Date();
       expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
@@ -1286,12 +1316,12 @@ export class SaveSystem {
       if (!testValue || testValue !== value) {
         throw new Error('Cookie verification failed - value mismatch');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`Cookie failed for ${name}, falling back to localStorage:`, error.message);
       this.setLocalStorage(name, value, days);
     }
   }
-  getCookieOnly(name) {
+  getCookieOnly(name: string): string | null {
     const nameEQ = name + "=";
     const ca = document.cookie.split(';');
     for (let i = 0; i < ca.length; i++) {
@@ -1303,7 +1333,7 @@ export class SaveSystem {
     }
     return null;
   }
-  getCookie(name) {
+  getCookie(name: string): string | null {
     // Try cookie first
     const cookieValue = this.getCookieOnly(name);
     if (cookieValue !== null) {
@@ -1313,7 +1343,7 @@ export class SaveSystem {
     // Fallback to localStorage
     return this.getLocalStorage(name);
   }
-  deleteCookie(name) {
+  deleteCookie(name: string) {
     try {
       // Use same SameSite setting as setCookie for consistency
       const isSecure = window.location.protocol === 'https:';
@@ -1322,7 +1352,7 @@ export class SaveSystem {
       const partitionedFlag = isSecure ? ';Partitioned' : '';
       
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;SameSite=${sameSite}${secureFlag}${partitionedFlag}`;
-    } catch (error) {
+    } catch (error: any) {
       console.warn(`Cookie deletion failed for ${name}:`, error.message);
     }
     
@@ -1330,7 +1360,7 @@ export class SaveSystem {
     this.deleteLocalStorage(name);
   }
   // localStorage utility functions
-  setLocalStorage(name, value, days) {
+  setLocalStorage(name: string, value: string, days: number) {
     try {
       const expires = Date.now() + (days * 24 * 60 * 60 * 1000);
       const data = {
@@ -1343,7 +1373,7 @@ export class SaveSystem {
       console.error(`Failed to save to localStorage: ${name}`, error);
     }
   }
-  getLocalStorage(name) {
+  getLocalStorage(name: string): string | null {
     try {
       const item = localStorage.getItem(name);
       if (!item) return null;
@@ -1362,7 +1392,7 @@ export class SaveSystem {
       return null;
     }
   }
-  deleteLocalStorage(name) {
+  deleteLocalStorage(name: string) {
     try {
       localStorage.removeItem(name);
       console.log(`Data removed from localStorage: ${name}`);
@@ -1372,7 +1402,7 @@ export class SaveSystem {
   }
 
   // Auto-save functionality
-  enableAutoSave(intervalMinutes = 5) {
+  enableAutoSave(intervalMinutes: number = 5) {
     if (this.autoSaveInterval) {
       clearInterval(this.autoSaveInterval);
     }
@@ -1396,16 +1426,16 @@ export class SaveSystem {
   }
 
   // Helper method to fix scientific notation in JSON
-  fixScientificNotation(jsonString) {
+  fixScientificNotation(jsonString: string): string {
     // Replace scientific notation with regular numbers
-    return jsonString.replace(/(\d+\.?\d*)e\+?(-?\d+)/gi, (match, base, exponent) => {
+    return jsonString.replace(/(\d+\.?\d*)e\+?(-?\d+)/gi, (match: string, base: string, exponent: string) => {
       const num = parseFloat(base) * Math.pow(10, parseInt(exponent));
       return num.toString();
     });
   }
   
   // Helper method to attempt basic JSON fixes
-  attemptJSONFix(jsonString) {
+  attemptJSONFix(jsonString: string): string {
     let fixed = jsonString;
     
     // Fix common issues

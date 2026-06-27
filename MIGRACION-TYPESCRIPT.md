@@ -66,7 +66,7 @@ Un archivo se da por migrado cuando:
 
 ### Ola 1 — Núcleo de datos con tests (prueba la tubería)
 - [x] `src/inventory.js` (ya tiene `@ts-check` + JSDoc + tests; primer objetivo real)
-- [ ] `src/SaveSystem.js` (depende de inventory; tiene tests; actualizar `vitest.config.js`)
+- [x] `src/SaveSystem.js` (depende de inventory; tiene tests; actualizar `vitest.config.js`)
 
 ### Ola 2 — Hojas puras de lógica (sin deps internas)
 - [x] `src/WallIntersectionHelper.js`
