@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { PROTOCOL_VERSION } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { MockClient } from '../harness/MockClient';
 
@@ -13,7 +14,7 @@ describe('P1 presence and avatar relay', () => {
   it('assigns a stable identity and delivers the world seed on join', async () => {
     ctx = await startTestServer();
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1 });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     const joined = await a.waitFor('joined');
     expect(typeof joined.playerId).toBe('string');
     expect(joined.playerId.length).toBeGreaterThan(0);
@@ -26,11 +27,11 @@ describe('P1 presence and avatar relay', () => {
   it('two clients see each other and the mover relays to the other at ~15Hz', async () => {
     ctx = await startTestServer({ AVATAR_TICK_HZ: '15' });
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1, displayName: 'A' });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, displayName: 'A' });
     const ja = await a.waitFor('joined');
 
     const b = await MockClient.connect(ctx.url);
-    b.send({ t: 'join', protocolVersion: 1, displayName: 'B' });
+    b.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, displayName: 'B' });
     const jb = await b.waitFor('joined');
 
     // A learns B arrived; B's joined snapshot lists A as a peer.
@@ -64,11 +65,11 @@ describe('P1 presence and avatar relay', () => {
   it('notifies remaining peers when a player leaves', async () => {
     ctx = await startTestServer();
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1 });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     await a.waitFor('joined');
 
     const b = await MockClient.connect(ctx.url);
-    b.send({ t: 'join', protocolVersion: 1 });
+    b.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     const jb = await b.waitFor('joined');
     await a.waitFor('peer_joined');
 
@@ -81,7 +82,7 @@ describe('P1 presence and avatar relay', () => {
   it('does not echo a player their own avatar state', async () => {
     ctx = await startTestServer();
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1 });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     await a.waitFor('joined');
     // Solo player moving: with no peers, A must receive no avatar_snapshots.
     a.send({

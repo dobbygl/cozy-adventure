@@ -339,10 +339,15 @@ export class Environment {
       return null;
     }
   }
+  /** Find a loaded base tree's mesh by its stable networkId, or null. */
+  getTreeMeshByNetworkId(networkId: number): THREE.Object3D | null {
+    return this.loadedTrees?.find((t) => t.mesh.userData.networkId === networkId)?.mesh ?? null;
+  }
+
   /**
    * Remove a tree (and its collider) by its stable networkId. This is the network
-   * path for a confirmed chop_tree: the server arbitrates the chop and every client
-   * removes the same tree by id. Mirrors TreeChoppingSystem's local removal.
+   * path for a confirmed node_depleted: the server arbitrates the harvest and every
+   * client removes the same tree by id. Mirrors TreeChoppingSystem's local removal.
    */
   removeTreeByNetworkId(networkId: number): void {
     const tree = this.loadedTrees?.find((t) => t.mesh.userData.networkId === networkId);

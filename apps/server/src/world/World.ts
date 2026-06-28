@@ -82,8 +82,13 @@ export class World {
 
   // --- queries used by command validation ---
 
-  isTreeChopped(networkId: number): boolean {
-    return this.derived.choppedTrees.has(networkId);
+  isNodeDepleted(networkId: number): boolean {
+    return this.derived.depletedNodes.has(networkId);
+  }
+
+  /** Remaining health of a hit-but-not-depleted resource node, or undefined if untouched. */
+  nodeHealth(networkId: number): number | undefined {
+    return this.derived.nodeHealth.get(networkId);
   }
 
   isCellOccupied(cell: BuildingCell): boolean {

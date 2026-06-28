@@ -6,6 +6,8 @@
 // already produces (player / inventory / environment / buildings / worldState), so
 // the same format is the wire format AND the persistence format (no reinvention).
 
+import type { ResourceNodeKind } from './resourceNodes';
+
 /** A 3D vector as plain numbers (never a THREE.Vector3 on the wire). */
 export interface Vec3 {
   x: number;
@@ -108,9 +110,22 @@ export interface WorldClockState {
 /**
  * A single applied change over the seeded base world. Discriminated by `type`.
  * Applying the same diff twice is a no-op (idempotent) — required for reconnect.
+ *
+ * Resource nodes (trees, future rocks/ore) are harvested over several hits:
+ * `node_damaged` carries the REMAINING health after a hit (monotonically
+ * decreasing, so re-replaying an out-of-date value is ignored), and
+ * `node_depleted` is the terminal removal once health reaches 0.
  */
 export type WorldDiff =
-  | { type: 'tree_chopped'; networkId: number; byPlayerId: string; at: number }
+  | {
+      type: 'node_damaged';
+      networkId: number;
+      nodeKind: ResourceNodeKind;
+      health: number;
+      byPlayerId: string;
+      at: number;
+    }
+  | { type: 'node_depleted'; networkId: number; nodeKind: ResourceNodeKind; byPlayerId: string; at: number }
   | { type: 'building_placed'; entity: BuildingState; at: number }
   | { type: 'building_removed'; networkId: number; byPlayerId: string; at: number }
   | { type: 'drop_spawned'; entity: DropState; at: number }

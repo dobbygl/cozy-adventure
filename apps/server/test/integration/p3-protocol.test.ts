@@ -41,12 +41,13 @@ describe('P3 protocol robustness', () => {
 
     // a issues a command then immediately disconnects. WS ordering + synchronous
     // application means the command fully applies (and broadcasts) or not at all.
-    a.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 11 } });
+    a.send({ t: 'command', seq: 1, cmd: { type: 'harvest_node', networkId: 11, nodeKind: 'tree' } });
     a.close();
 
     const ev = await b.waitFor('event');
-    expect(ev.diff.type).toBe('tree_chopped');
-    if (ev.diff.type === 'tree_chopped') expect(ev.diff.networkId).toBe(11);
+    // One hit damages the tree (it takes several to fell); the diff still broadcasts.
+    expect(ev.diff.type).toBe('node_damaged');
+    if (ev.diff.type === 'node_damaged') expect(ev.diff.networkId).toBe(11);
     b.close();
   });
 });

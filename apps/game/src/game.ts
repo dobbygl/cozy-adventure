@@ -162,7 +162,12 @@ export class Game {
         // Confirmed world diffs -> scene changes. Closures read the systems at call
         // time (they exist by begin(), after the world is built).
         worldHandlers: {
-          onTreeChopped: (networkId) => this.environment?.removeTreeByNetworkId(networkId),
+          // A resource node took a confirmed hit: show its damage (and, when live, the
+          // hit shake). Trees are the only node kind today; future kinds route by `kind`.
+          onNodeDamaged: (networkId, _kind, health, animate) =>
+            this.treeChoppingSystem?.applyNetworkNodeDamage(networkId, health, animate),
+          // A resource node was harvested to depletion: remove it from the scene.
+          onNodeDepleted: (networkId, _kind) => this.environment?.removeTreeByNetworkId(networkId),
           onBuildingPlaced: (building) => this.buildingSystem?.materializeNetworkBuilding(building),
           onBuildingRemoved: (networkId) => this.buildingSystem?.removeNetworkBuilding(networkId),
           onDropSpawned: (drop) => {
@@ -993,11 +998,12 @@ addSampleItemsToInventory() {
       this.treeChoppingSystem.setPlayer(this.player);
     }
 
-    // Multiplayer: route chops through the server (apply-on-confirm). In local mode
-    // requestChop stays null and chopping keeps its existing client-side behavior.
+    // Multiplayer: route each axe swing through the server as a harvest_node hit
+    // (apply-on-confirm). In local mode requestHarvest stays null and chopping keeps
+    // its existing client-side multi-hit behavior.
     if (this.network) {
-      this.treeChoppingSystem.requestChop = (networkId) =>
-        this.network?.sendCommand({ type: 'chop_tree', networkId });
+      this.treeChoppingSystem.requestHarvest = (networkId, nodeKind) =>
+        this.network?.sendCommand({ type: 'harvest_node', networkId, nodeKind });
     }
 
     console.log('Tree chopping system initialized with player reference and item drop system');

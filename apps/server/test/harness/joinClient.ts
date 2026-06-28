@@ -1,5 +1,5 @@
 import { MockClient } from './MockClient';
-import type { JoinedMessage } from '@cozy/shared';
+import { PROTOCOL_VERSION, type JoinedMessage } from '@cozy/shared';
 
 /** Connect a MockClient and complete the join handshake, returning the client + joined message. */
 export async function joinClient(
@@ -9,7 +9,7 @@ export async function joinClient(
   const c = await MockClient.connect(url);
   c.send({
     t: 'join',
-    protocolVersion: 1,
+    protocolVersion: PROTOCOL_VERSION,
     ...(opts.playerId ? { playerId: opts.playerId } : {}),
     ...(opts.displayName ? { displayName: opts.displayName } : {}),
   });

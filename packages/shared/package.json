@@ -8,7 +8,8 @@
     "./rng": "./rng.ts",
     "./protocol": "./protocol.ts",
     "./state": "./state.ts",
-    "./worldState": "./worldState.ts"
+    "./worldState": "./worldState.ts",
+    "./resourceNodes": "./resourceNodes.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

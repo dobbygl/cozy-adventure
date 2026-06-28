@@ -3,9 +3,15 @@ import { startTestServer, type TestServer } from '@cozy/server/testing';
 import { NetworkSession } from '../../src/net/NetworkSession';
 import { NetworkSystem } from '../../src/net/NetworkSystem';
 import type { RemotePlayerLike } from '../../src/net/RemotePlayerManager';
-import type { AvatarSnapshot, PeerInfo } from '@cozy/shared';
+import { RESOURCE_NODES, type AvatarSnapshot, type PeerInfo } from '@cozy/shared';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** Send enough harvest hits to fell a base tree (depletes it). */
+const TREE_HITS = RESOURCE_NODES.tree.maxHealth;
+function fellTree(net: NetworkSystem, networkId: number): void {
+  for (let i = 0; i < TREE_HITS; i++) net.sendCommand({ type: 'harvest_node', networkId, nodeKind: 'tree' });
+}
 
 // Headless: NetworkSession's join -> presence -> relay orchestration is verified
 // against a real in-process @cozy/server, with a fake remote factory and a manual
@@ -131,12 +137,12 @@ describe('NetworkSession against an in-process @cozy/server', () => {
 
   it('routes a peer world mutation into ClientWorld (and its scene handler)', async () => {
     ctx = await startTestServer();
-    const chopped: number[] = [];
+    const depleted: number[] = [];
     const a = new NetworkSession({
       config: { url: ctx.url },
       remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
       now: () => 0,
-      worldHandlers: { onTreeChopped: (id) => chopped.push(id) },
+      worldHandlers: { onNodeDepleted: (id) => depleted.push(id) },
     });
     cleanups.push(() => a.destroy());
     await a.connect();
@@ -145,10 +151,10 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     const b = new NetworkSystem({ url: ctx.url });
     cleanups.push(() => b.destroy());
     await b.connect();
-    b.sendCommand({ type: 'chop_tree', networkId: 42 });
+    fellTree(b, 42);
     await sleep(200);
-    expect(chopped).toContain(42); // A's scene handler fired
-    expect(a.world.isTreeChopped(42)).toBe(true);
+    expect(depleted).toContain(42); // A's scene handler fired on depletion
+    expect(a.world.isNodeDepleted(42)).toBe(true);
   });
 
   it('reconnect preserves world state and reconciles idempotently (P3)', async () => {
@@ -166,24 +172,24 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     const b = new NetworkSystem({ url: ctx.url });
     cleanups.push(() => b.destroy());
     await b.connect();
-    b.sendCommand({ type: 'chop_tree', networkId: 7 });
+    fellTree(b, 7);
     await sleep(200);
-    expect(a.world.isTreeChopped(7)).toBe(true);
+    expect(a.world.isNodeDepleted(7)).toBe(true);
 
     await a.reconnect();
     expect(a.isConnected).toBe(true);
     expect(a.playerId).toBe(idBefore); // identity recovered
-    expect(a.world.isTreeChopped(7)).toBe(true); // state preserved, no double-apply
+    expect(a.world.isNodeDepleted(7)).toBe(true); // state preserved, no double-apply
   });
 
   it('buffers world diffs before begin() and applies them on begin()', async () => {
     ctx = await startTestServer();
-    const chopped: number[] = [];
+    const depleted: number[] = [];
     const a = new NetworkSession({
       config: { url: ctx.url },
       remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
       now: () => 0,
-      worldHandlers: { onTreeChopped: (id) => chopped.push(id) },
+      worldHandlers: { onNodeDepleted: (id) => depleted.push(id) },
     });
     cleanups.push(() => a.destroy());
     await a.connect(); // not begun: scene not ready
@@ -191,12 +197,12 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     const b = new NetworkSystem({ url: ctx.url });
     cleanups.push(() => b.destroy());
     await b.connect();
-    b.sendCommand({ type: 'chop_tree', networkId: 99 });
+    fellTree(b, 99);
     await sleep(200);
-    expect(chopped).toEqual([]); // buffered while loading
+    expect(depleted).toEqual([]); // buffered while loading
 
     a.begin();
-    expect(chopped).toEqual([99]); // flushed once the scene is ready
-    expect(a.world.isTreeChopped(99)).toBe(true);
+    expect(depleted).toEqual([99]); // flushed once the scene is ready
+    expect(a.world.isNodeDepleted(99)).toBe(true);
   });
 });

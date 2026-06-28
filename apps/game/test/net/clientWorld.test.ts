@@ -18,11 +18,34 @@ const drop = (networkId: number): DropState => ({
   position: { x: 0, y: 0, z: 0 },
   spawnedAt: 0,
 });
+const damaged = (networkId: number, health: number): WorldDiff => ({
+  type: 'node_damaged',
+  networkId,
+  nodeKind: 'tree',
+  health,
+  byPlayerId: 'p1',
+  at: 0,
+});
+const depleted = (networkId: number): WorldDiff => ({
+  type: 'node_depleted',
+  networkId,
+  nodeKind: 'tree',
+  byPlayerId: 'p1',
+  at: 0,
+});
 
 function spy() {
-  const calls: Record<string, number[]> = { chopped: [], placed: [], removedB: [], spawned: [], removedD: [] };
+  const calls = {
+    damaged: [] as Array<{ id: number; health: number; animate: boolean }>,
+    depleted: [] as number[],
+    placed: [] as number[],
+    removedB: [] as number[],
+    spawned: [] as number[],
+    removedD: [] as number[],
+  };
   const handlers: WorldChangeHandlers = {
-    onTreeChopped: (id) => calls.chopped.push(id),
+    onNodeDamaged: (id, _kind, health, animate) => calls.damaged.push({ id, health, animate }),
+    onNodeDepleted: (id) => calls.depleted.push(id),
     onBuildingPlaced: (b) => calls.placed.push(b.networkId),
     onBuildingRemoved: (id) => calls.removedB.push(id),
     onDropSpawned: (d) => calls.spawned.push(d.networkId),
@@ -32,21 +55,37 @@ function spy() {
 }
 
 describe('ClientWorld', () => {
-  it('fires onTreeChopped once and removes the tree from state', () => {
+  it('fires onNodeDepleted once and marks the node depleted', () => {
     const { calls, handlers } = spy();
     const w = new ClientWorld(handlers);
-    w.applyDiff({ type: 'tree_chopped', networkId: 5, byPlayerId: 'p1', at: 0 });
-    expect(calls.chopped).toEqual([5]);
-    expect(w.isTreeChopped(5)).toBe(true);
+    w.applyDiff(depleted(5));
+    expect(calls.depleted).toEqual([5]);
+    expect(w.isNodeDepleted(5)).toBe(true);
+  });
+
+  it('fires onNodeDamaged with the live animate flag and remaining health', () => {
+    const { calls, handlers } = spy();
+    const w = new ClientWorld(handlers);
+    w.applyDiff(damaged(5, 4)); // live event
+    expect(calls.damaged).toEqual([{ id: 5, health: 4, animate: true }]);
+  });
+
+  it('does not re-fire onNodeDamaged for a stale/replayed hit (monotonic)', () => {
+    const { calls, handlers } = spy();
+    const w = new ClientWorld(handlers);
+    w.applyDiff(damaged(5, 4));
+    w.applyDiff(damaged(5, 4)); // exact replay -> no-op
+    w.applyDiff(damaged(5, 5)); // higher (stale) health -> no-op
+    expect(calls.damaged).toEqual([{ id: 5, health: 4, animate: true }]);
   });
 
   it('does not re-fire a handler for an already-applied diff (idempotent)', () => {
     const { calls, handlers } = spy();
     const w = new ClientWorld(handlers);
-    const diff: WorldDiff = { type: 'tree_chopped', networkId: 5, byPlayerId: 'p1', at: 0 };
+    const diff = depleted(5);
     w.applyDiff(diff);
     w.applyDiff(diff); // replay
-    expect(calls.chopped).toEqual([5]); // fired only once
+    expect(calls.depleted).toEqual([5]); // fired only once
   });
 
   it('places and removes a building, tracking the occupied cell', () => {
@@ -71,7 +110,7 @@ describe('ClientWorld', () => {
     expect(w.listDrops()).toHaveLength(0);
   });
 
-  it('loadSnapshot materializes the current world by replaying its diffs', () => {
+  it('loadSnapshot materializes the world by replaying diffs, without transient damage animations', () => {
     const { calls, handlers } = spy();
     const w = new ClientWorld(handlers);
     const snapshot: WorldSnapshot = {
@@ -80,7 +119,8 @@ describe('ClientWorld', () => {
       clock: { dayTime: 0, gameTime: 0, weather: 'clear' },
       nextNetworkId: 1_000_002,
       diffs: [
-        { type: 'tree_chopped', networkId: 7, byPlayerId: 'p1', at: 0 },
+        depleted(7),
+        damaged(8, 3), // a half-chopped tree present at join time
         { type: 'building_placed', entity: building(1_000_000), at: 1 },
         { type: 'drop_spawned', entity: drop(1_000_001), at: 2 },
       ],
@@ -88,7 +128,10 @@ describe('ClientWorld', () => {
       drops: [],
     };
     w.loadSnapshot(snapshot);
-    expect(calls.chopped).toEqual([7]);
+    expect(calls.depleted).toEqual([7]);
+    // The damaged node's STATE is applied, but with animate=false (no spurious shake
+    // for a hit this late-joiner never witnessed).
+    expect(calls.damaged).toEqual([{ id: 8, health: 3, animate: false }]);
     expect(calls.placed).toEqual([1_000_000]);
     expect(calls.spawned).toEqual([1_000_001]);
     expect(w.listBuildings()).toHaveLength(1);

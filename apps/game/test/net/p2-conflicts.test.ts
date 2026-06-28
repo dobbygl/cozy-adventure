@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { startTestServer, type TestServer } from '@cozy/server/testing';
 import { NetworkSystem } from '../../src/net/NetworkSystem';
-import type { WorldCommand, RejectReason } from '@cozy/shared';
+import { RESOURCE_NODES, type WorldCommand, type RejectReason } from '@cozy/shared';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -30,13 +30,17 @@ describe('two-client world conflicts are authoritative (SC-003)', () => {
     return { a, b, rejections };
   }
 
-  it('double chop_tree on the same tree: exactly one is rejected (no double-chop)', async () => {
+  it('racing the depleting harvest on a tree: exactly one is rejected (no double-fell)', async () => {
     const { a, b, rejections } = await twoClients();
-    const chop: WorldCommand = { type: 'chop_tree', networkId: 5 };
-    a.sendCommand(chop);
-    b.sendCommand(chop);
+    const hit: WorldCommand = { type: 'harvest_node', networkId: 5, nodeKind: 'tree' };
+    // A lands every hit but the last, leaving the tree at one hit of health.
+    for (let i = 0; i < RESOURCE_NODES.tree.maxHealth - 1; i++) a.sendCommand(hit);
+    await sleep(150);
+    // Both race the final, depleting hit: the server fells it once; the other is
+    // already_consumed. Whichever message lands first wins — the rejection count is 1.
+    a.sendCommand(hit);
+    b.sendCommand(hit);
     await sleep(250);
-    // The server arbitrates: the first chop wins, the second is already_consumed.
     expect(rejections).toEqual(['already_consumed']);
   });
 
@@ -56,10 +60,10 @@ describe('two-client world conflicts are authoritative (SC-003)', () => {
     expect(rejections).toEqual(['cell_occupied']);
   });
 
-  it('chops in different cells/trees do not conflict', async () => {
+  it('harvesting different trees does not conflict', async () => {
     const { a, b, rejections } = await twoClients();
-    a.sendCommand({ type: 'chop_tree', networkId: 10 });
-    b.sendCommand({ type: 'chop_tree', networkId: 11 });
+    a.sendCommand({ type: 'harvest_node', networkId: 10, nodeKind: 'tree' });
+    b.sendCommand({ type: 'harvest_node', networkId: 11, nodeKind: 'tree' });
     await sleep(250);
     expect(rejections).toEqual([]); // distinct trees: both succeed
   });

@@ -1,14 +1,14 @@
 // Service worker de Cozy Adventure. Empaquetado del lado del cliente: la PWA NO cambia la lógica
 // del juego; solo da offline tras la primera carga (single-player sigue siendo el modo por defecto,
-// con guardado en cookies). Cacheo en runtime (no precache de nombres hasheados): la primera carga
-// online cachea el shell (HTML + JS de Three.js + assets GLB/FBX), y a partir de ahí arranca sin
-// conexión. Navegación network-first (recoge actualizaciones); estáticos cache-first (rápidos).
+// con guardado en localStorage). Cacheo en runtime (no precache de nombres hasheados): la primera
+// carga online cachea el shell (HTML + JS de Three.js + assets GLB/FBX), y a partir de ahí arranca
+// sin conexión. Navegación network-first (recoge actualizaciones); estáticos cache-first (rápidos).
 // Subir la versión de CACHE + skipWaiting/clients.claim evita quedarse atascado en un build viejo.
 //
-// El service worker solo se registra desde la página de nivel superior (ver src/pwa/install.ts): NO
-// corre dentro del iframe del host del playground, así que aquí no hay que distinguir ese caso.
+// El service worker solo se registra desde la página de nivel superior (ver src/pwa/install.ts): por
+// diseño no corre dentro de ningún iframe, así que aquí no hay que distinguir ese caso.
 
-const CACHE = 'cozy-adventure-pwa-v1';
+const CACHE = 'cozy-adventure-pwa-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { RESOURCE_NODES } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
 
@@ -10,16 +11,24 @@ describe('P2 conflict resolution (single winner)', () => {
     ctx = undefined;
   });
 
-  it('chopping the same tree twice: applied once, then rejected', async () => {
+  it('harvesting a tree: damaged per hit, depleted on the last, then rejected', async () => {
     ctx = await startTestServer();
     const { c } = await joinClient(ctx.url);
+    const hits = RESOURCE_NODES.tree.maxHealth; // 5 hits to fell a tree
 
-    c.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 5 } });
-    const ev = await c.waitFor('event');
-    expect(ev.diff.type).toBe('tree_chopped');
-    if (ev.diff.type === 'tree_chopped') expect(ev.diff.networkId).toBe(5);
+    for (let i = 0; i < hits; i++) {
+      c.send({ t: 'command', seq: i + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
+      const ev = await c.waitFor('event');
+      // The last hit depletes the tree; every earlier hit only damages it.
+      const expected = i === hits - 1 ? 'node_depleted' : 'node_damaged';
+      expect(ev.diff.type).toBe(expected);
+      if (ev.diff.type === 'node_depleted' || ev.diff.type === 'node_damaged') {
+        expect(ev.diff.networkId).toBe(5);
+      }
+    }
 
-    c.send({ t: 'command', seq: 2, cmd: { type: 'chop_tree', networkId: 5 } });
+    // Already depleted: a further harvest is rejected (no double-fell).
+    c.send({ t: 'command', seq: hits + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
     const rej = await c.waitFor('command_rejected');
     expect(rej.reason).toBe('already_consumed');
     c.close();
@@ -63,8 +72,8 @@ describe('P2 conflict resolution (single winner)', () => {
     const { c: b } = await joinClient(ctx.url);
     await a.waitFor('peer_joined');
 
-    // a chops a tree (gains wood), then drops it on the ground.
-    a.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 7 } });
+    // a harvests a tree once (gains wood), then drops it on the ground.
+    a.send({ t: 'command', seq: 1, cmd: { type: 'harvest_node', networkId: 7, nodeKind: 'tree' } });
     await a.waitFor('event');
     a.send({ t: 'command', seq: 2, cmd: { type: 'drop_item', itemId: 'wood', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
     const spawn = await a.waitFor('event');

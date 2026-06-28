@@ -26,7 +26,7 @@ describe('P2 command validation (rejection without mutation)', () => {
     await dropper.waitFor('peer_joined');
 
     // dropper gains wood and drops it at the origin (no position reported -> no range check).
-    dropper.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 1 } });
+    dropper.send({ t: 'command', seq: 1, cmd: { type: 'harvest_node', networkId: 1, nodeKind: 'tree' } });
     await dropper.waitFor('event');
     dropper.send({ t: 'command', seq: 2, cmd: { type: 'drop_item', itemId: 'wood', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
     const spawn = await dropper.waitFor('event');

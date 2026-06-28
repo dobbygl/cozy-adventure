@@ -7,17 +7,13 @@ import type {
   BuildingState,
   DropState,
 } from '@cozy/shared';
+import { getResourceNode } from '@cozy/shared';
 import type { World } from './World';
 import { addItem, removeItem } from './inventory';
 import { distanceXZ } from './geometry';
 
 /** How far a player may act from their last known position (units). */
 export const MAX_REACH = 6;
-/**
- * Placeholder resource granted per chopped tree. The real item id lives in the
- * client item registry (reconciled in spec 003); 'wood' is a v1 stand-in.
- */
-export const CHOP_RESOURCE_ID = 'wood';
 
 export interface CommandContext {
   world: World;
@@ -39,8 +35,8 @@ function inReach(ctx: CommandContext, target: Vec3): boolean {
 
 export function applyCommand(ctx: CommandContext, cmd: WorldCommand, now: number): CommandOutcome {
   switch (cmd.type) {
-    case 'chop_tree':
-      return chopTree(ctx, cmd, now);
+    case 'harvest_node':
+      return harvestNode(ctx, cmd, now);
     case 'place_building':
       return placeBuilding(ctx, cmd, now);
     case 'pickup_drop':
@@ -50,25 +46,51 @@ export function applyCommand(ctx: CommandContext, cmd: WorldCommand, now: number
   }
 }
 
-function chopTree(
+/**
+ * One hit on a harvestable resource node (tree, future rock/ore). Server-authoritative
+ * health: each hit removes `damagePerHit`, granting `yieldPerHit` (plus the felling
+ * bonus on the depleting hit), so a tree falls after `maxHealth` hits with the same
+ * total yield as single-player. Emits `node_damaged` while alive, `node_depleted` on
+ * the final hit; the per-hit grant is reported via inventoryDelta only when it fit.
+ *
+ * No range check: the server doesn't know base-node positions (they are client-side
+ * and seed-deterministic). It only tracks health and arbitrates over-harvest. The
+ * node kind is client-declared (the client tags each mesh); for base nodes the server
+ * trusts it, exactly as it already trusts the chop target — a v1 simplification.
+ */
+function harvestNode(
   ctx: CommandContext,
-  cmd: Extract<WorldCommand, { type: 'chop_tree' }>,
+  cmd: Extract<WorldCommand, { type: 'harvest_node' }>,
   now: number
 ): CommandOutcome {
-  // No range check: the server doesn't know base-tree positions (they are
-  // client-side and seed-deterministic). It only arbitrates double-chop.
-  if (ctx.world.isTreeChopped(cmd.networkId)) return { ok: false, reason: 'already_consumed' };
-  const diff: WorldDiff = {
-    type: 'tree_chopped',
-    networkId: cmd.networkId,
-    byPlayerId: ctx.player.playerId,
-    at: now,
-  };
+  const def = getResourceNode(cmd.nodeKind);
+  if (!def) return { ok: false, reason: 'invalid' };
+  if (ctx.world.isNodeDepleted(cmd.networkId)) return { ok: false, reason: 'already_consumed' };
+
+  const current = ctx.world.nodeHealth(cmd.networkId) ?? def.maxHealth;
+  const remaining = current - def.damagePerHit;
+  const depleted = remaining <= 0;
+
+  const diff: WorldDiff = depleted
+    ? { type: 'node_depleted', networkId: cmd.networkId, nodeKind: def.kind, byPlayerId: ctx.player.playerId, at: now }
+    : {
+        type: 'node_damaged',
+        networkId: cmd.networkId,
+        nodeKind: def.kind,
+        health: remaining,
+        byPlayerId: ctx.player.playerId,
+        at: now,
+      };
   ctx.world.recordDiff(diff);
-  // Best-effort resource grant; a full inventory does not un-chop the tree. The
-  // delta tells the client to reflect the grant in its own inventory.
-  addItem(ctx.player.inventory, CHOP_RESOURCE_ID, 1);
-  return { ok: true, diff, inventoryDelta: { itemId: CHOP_RESOURCE_ID, delta: 1 } };
+
+  // Per-hit yield, plus the felling bonus on the depleting hit. Best-effort: a full
+  // inventory doesn't undo the hit. addItem is all-or-nothing, so only report the
+  // delta when it actually fit, or the client would gain items authority never granted.
+  const amount = def.yieldPerHit + (depleted ? def.yieldBonusOnDeplete : 0);
+  const granted = addItem(ctx.player.inventory, def.yieldItemId, amount);
+  return granted
+    ? { ok: true, diff, inventoryDelta: { itemId: def.yieldItemId, delta: amount } }
+    : { ok: true, diff };
 }
 
 function placeBuilding(

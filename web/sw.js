@@ -7,7 +7,7 @@
 // dos nombres distintos harían que los dos SW (este, scope '/'; y el del juego, scope '/play/') se
 // desalojaran mutuamente la caché en cada activación. Si subes la versión, súbela en AMBOS a la vez.
 
-const CACHE = 'cozy-adventure-pwa-v1';
+const CACHE = 'cozy-adventure-pwa-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RESOURCE_NODES, type ResourceNodeKind } from '@cozy/shared';
 import type { Inventory, Item } from './inventory.js';
 import type { ItemDropSystem } from './ItemDropSystem.js';
 
@@ -25,11 +26,12 @@ export class TreeChoppingSystem {
   mouseIndicator: HTMLElement | null;
   hoveredTree: THREE.Object3D | null;
   /**
-   * In multiplayer, Game sets this to send a chop_tree command. When present, a chop
-   * is server-authoritative: emit the command and let the confirmed event remove the
-   * tree, instead of running the local health/destroy path. Null = local mode.
+   * In multiplayer, Game sets this to send a harvest_node command (one per axe swing).
+   * When present, harvesting is server-authoritative: emit the hit and let the confirmed
+   * node_damaged/node_depleted events drive the tree's reaction and removal, instead of
+   * running the local health/destroy path. Null = local (single-player) mode.
    */
-  requestChop: ((networkId: number) => void) | null = null;
+  requestHarvest: ((networkId: number, kind: ResourceNodeKind) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -50,10 +52,12 @@ export class TreeChoppingSystem {
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     
-    // Tree health tracking
+    // Tree health tracking. The per-tree economy (hits, wood-per-hit, felling bonus)
+    // is sourced from the shared resource-node registry so single-player and the
+    // server's network-mode grant cannot drift apart.
     this.treeHealth = new Map(); // tree mesh -> health
-    this.maxTreeHealth = 5; // Trees take 5 hits to chop
-    this.woodPerHit = 2; // Wood given per hit
+    this.maxTreeHealth = RESOURCE_NODES.tree.maxHealth; // Trees take 5 hits to chop
+    this.woodPerHit = RESOURCE_NODES.tree.yieldPerHit; // Wood given per hit
     
     // Apple tree tracking - each apple tree can only drop 3 apples total
     this.appleTreeDrops = new Map(); // tree mesh -> number of apples already dropped
@@ -248,16 +252,17 @@ export class TreeChoppingSystem {
       return; // Don't allow chopping trees that are falling
     }
 
-    // Multiplayer: chopping is server-authoritative. Emit a chop_tree command and let
-    // the confirmed tree_chopped event remove the tree (apply-on-confirm), instead of
-    // the local health/destroy path. Mark it so repeat clicks don't spam the command
-    // (the server also dedupes); a quick hit animation gives immediate feedback.
-    if (this.requestChop) {
+    // Multiplayer: harvesting is server-authoritative and multi-hit. Emit ONE
+    // harvest_node command per swing and return; the server tracks the tree's health
+    // and the confirmed node_damaged/node_depleted events drive its reaction (shake +
+    // darkening) and removal, so every client — including remotes — sees the same
+    // thing. We do NOT touch local health or mark the tree destroyed here: it stays
+    // choppable until the server confirms depletion. The player's axe-swing animation
+    // already fired in handleClick, so the swing still feels immediate.
+    if (this.requestHarvest) {
       const networkId = treeMesh.userData?.networkId;
       if (typeof networkId === 'number') {
-        treeMesh.userData.isBeingDestroyed = true;
-        this.playTreeHitAnimation(treeMesh);
-        this.requestChop(networkId);
+        this.requestHarvest(networkId, 'tree');
         return;
       }
     }
@@ -431,10 +436,11 @@ export class TreeChoppingSystem {
     this.appleTreeDrops.delete(treeMesh);
     
     // Drop bonus wood items for fully chopping the tree
+    const bonus = RESOURCE_NODES.tree.yieldBonusOnDeplete;
     const woodItem = this.itemRegistry['wood'];
     if (woodItem && this.itemDropSystem) {
-      this.dropWoodItems(treeMesh.position, 3); // Bonus wood for fully chopping
-      console.log('Tree fully chopped! Dropped 3 bonus wood items!');
+      this.dropWoodItems(treeMesh.position, bonus); // Bonus wood for fully chopping
+      console.log(`Tree fully chopped! Dropped ${bonus} bonus wood items!`);
     }
     
     // Play tree break animation before removing
@@ -449,7 +455,20 @@ export class TreeChoppingSystem {
     // Remove associated tree collider immediately
     this.removeTreeCollider(treeMesh);
   }
-  
+
+  /**
+   * Apply a server-confirmed hit to a base tree by networkId (multiplayer). Sets the
+   * persistent damage visual (a pure function of remaining health, so it stays correct
+   * for a late-joiner replaying the world snapshot) and, only for a live event, plays
+   * the transient hit shake. The tree is removed separately, on node_depleted.
+   */
+  applyNetworkNodeDamage(networkId: number, health: number, animate: boolean): void {
+    const mesh = this.environment?.getTreeMeshByNetworkId?.(networkId);
+    if (!mesh) return;
+    this.applyTreeDamageEffect(mesh, health);
+    if (animate) this.playTreeHitAnimation(mesh);
+  }
+
   removeTreeCollider(treeMesh: any): void {
     // Find and remove the associated tree collider
     const collidersToRemove: THREE.Object3D[] = [];

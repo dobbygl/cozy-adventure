@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { PROTOCOL_VERSION } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { MockClient } from '../harness/MockClient';
 
@@ -14,13 +15,13 @@ describe('P1 auth and capacity', () => {
     ctx = await startTestServer({ SERVER_PASSWORD: 'sekret' });
 
     const bad = await MockClient.connect(ctx.url);
-    bad.send({ t: 'join', protocolVersion: 1, password: 'nope' });
+    bad.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, password: 'nope' });
     const err = await bad.waitFor('error');
     expect(err.code).toBe('auth');
     bad.close();
 
     const good = await MockClient.connect(ctx.url);
-    good.send({ t: 'join', protocolVersion: 1, password: 'sekret' });
+    good.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, password: 'sekret' });
     const joined = await good.waitFor('joined');
     expect(joined.playerId).toBeDefined();
     good.close();
@@ -29,7 +30,7 @@ describe('P1 auth and capacity', () => {
   it('rejects a join missing the password on a protected server', async () => {
     ctx = await startTestServer({ SERVER_PASSWORD: 'sekret' });
     const c = await MockClient.connect(ctx.url);
-    c.send({ t: 'join', protocolVersion: 1 });
+    c.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     const err = await c.waitFor('error');
     expect(err.code).toBe('auth');
     c.close();
@@ -47,11 +48,11 @@ describe('P1 auth and capacity', () => {
   it('rejects joins beyond MAX_PLAYERS', async () => {
     ctx = await startTestServer({ MAX_PLAYERS: '1' });
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1 });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     await a.waitFor('joined');
 
     const b = await MockClient.connect(ctx.url);
-    b.send({ t: 'join', protocolVersion: 1 });
+    b.send({ t: 'join', protocolVersion: PROTOCOL_VERSION });
     const err = await b.waitFor('error');
     expect(err.code).toBe('world_full');
 

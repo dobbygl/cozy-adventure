@@ -12,9 +12,14 @@ import type {
   WorldDiff,
   BuildingCell,
 } from './state';
+import type { ResourceNodeKind } from './resourceNodes';
 
-/** Bumped on any breaking change to the message shapes. Sent in `join`. */
-export const PROTOCOL_VERSION = 1;
+/**
+ * Bumped on any breaking change to the message shapes. Sent in `join`.
+ * v2: chop_tree/tree_chopped generalized to the multi-hit harvest_node command +
+ * node_damaged/node_depleted diffs (resource nodes now have health).
+ */
+export const PROTOCOL_VERSION = 2;
 
 /**
  * Wire-contract id-space split. Base world entities (the seeded trees) are
@@ -39,7 +44,7 @@ export type WorldCommand =
       level: number;
       cell: BuildingCell;
     }
-  | { type: 'chop_tree'; networkId: number }
+  | { type: 'harvest_node'; networkId: number; nodeKind: ResourceNodeKind }
   | { type: 'pickup_drop'; networkId: number }
   | { type: 'drop_item'; itemId: string; quantity: number; position: Vec3 };
 

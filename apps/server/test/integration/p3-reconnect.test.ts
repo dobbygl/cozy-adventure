@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { PROTOCOL_VERSION, RESOURCE_NODES, totalYieldFor } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
 import { MockClient } from '../harness/MockClient';
@@ -40,22 +41,29 @@ describe('P3 keepalive, timeout and reconnect', () => {
     ctx = await startTestServer({ RECONNECT_WINDOW_MS: '3000' });
     const { c: a, joined: ja } = await joinClient(ctx.url);
     const playerId = ja.playerId;
-    a.send({ t: 'command', seq: 1, cmd: { type: 'chop_tree', networkId: 5 } });
-    await a.waitFor('event'); // a gains wood
+    // Fell a tree over its full health, summing the per-hit wood grants.
+    const hits = RESOURCE_NODES.tree.maxHealth;
+    let woodGained = 0;
+    for (let i = 0; i < hits; i++) {
+      a.send({ t: 'command', seq: i + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
+      await a.waitFor('event');
+      woodGained += (await a.waitFor('inventory_delta')).delta;
+    }
+    expect(woodGained).toBe(totalYieldFor(RESOURCE_NODES.tree)); // 13, same as single-player
     a.close();
     await sleep(120); // within the reconnect window
 
     const { c: b, joined: jb } = await joinClient(ctx.url, { playerId });
     expect(jb.playerId).toBe(playerId);
-    expect(countItem(jb.player.inventory, 'wood')).toBe(1);
-    expect(jb.world.diffs.some((d) => d.type === 'tree_chopped' && d.networkId === 5)).toBe(true);
+    expect(countItem(jb.player.inventory, 'wood')).toBe(woodGained);
+    expect(jb.world.diffs.some((d) => d.type === 'node_depleted' && d.networkId === 5)).toBe(true);
     b.close();
   });
 
   it('a second connection for the same player kicks the old one (replaced)', async () => {
     ctx = await startTestServer();
     const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: 1, playerId: 'dup-id' });
+    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: 'dup-id' });
     await a.waitFor('joined');
 
     const { c: b } = await joinClient(ctx.url, { playerId: 'dup-id' });

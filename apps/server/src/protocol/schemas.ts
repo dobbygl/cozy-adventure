@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClientMessage } from '@cozy/shared';
+import { RESOURCE_NODE_KINDS, type ClientMessage } from '@cozy/shared';
 
 // Runtime validation for everything the server receives. The server trusts
 // nothing: inbound data is `unknown` until it passes these schemas. Kept here
@@ -22,7 +22,11 @@ const worldCommand = z.discriminatedUnion('type', [
       gz: z.number().int(),
     }),
   }),
-  z.object({ type: z.literal('chop_tree'), networkId: z.number().int() }),
+  z.object({
+    type: z.literal('harvest_node'),
+    networkId: z.number().int(),
+    nodeKind: z.enum(RESOURCE_NODE_KINDS),
+  }),
   z.object({ type: z.literal('pickup_drop'), networkId: z.number().int() }),
   z.object({
     type: z.literal('drop_item'),
