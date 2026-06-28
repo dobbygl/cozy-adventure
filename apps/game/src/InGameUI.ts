@@ -213,7 +213,14 @@ export class InGameUI {
       }
     });
   }
+  /** Network sessions are server-authoritative: local quick-save is disabled. */
+  private isNetworkMode(): boolean {
+    return this.gameInstance.sessionMode === 'network';
+  }
+
   async showQuickSaveModal(): Promise<void> {
+    // No-op in network mode: progress is persisted by the server, the button is hidden.
+    if (this.isNetworkMode()) return;
     if (!this.gameInstance.isGameStarted) {
       this.showNotification('Cannot save - game not started!', 'error');
       return;
@@ -429,6 +436,9 @@ export class InGameUI {
   }
 
   async performQuickSave(slotNumber = 0): Promise<void> {
+    // No-op in network mode (also reachable via Ctrl+S): the server owns progress,
+    // so there is nothing to save locally and no spinner/error to surface.
+    if (this.isNetworkMode()) return;
     if (!this.gameInstance.isGameStarted) {
       this.showNotification('Cannot save - game not started!', 'error');
       return;

@@ -313,14 +313,18 @@ export class Game {
     
     console.log('Game world fully initialized and ready to play!');
     
-    // Enable auto-save after game is fully initialized
-    if (this.saveSystem) {
-      this.saveSystem.enableAutoSave(5); // Auto-save every 5 minutes
-    }
-    
-    // Show in-game UI save button
-    if (this.inGameUI) {
-      this.inGameUI.show();
+    // Local mode persists to cookies; network mode is server-authoritative, so skip
+    // the local autosave timer and keep the Quick Save button hidden entirely.
+    if (this.sessionMode === 'local') {
+      // Enable auto-save after game is fully initialized
+      if (this.saveSystem) {
+        this.saveSystem.enableAutoSave(5); // Auto-save every 5 minutes
+      }
+
+      // Show in-game UI save button
+      if (this.inGameUI) {
+        this.inGameUI.show();
+      }
     }
     
     // Complete loading
