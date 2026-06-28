@@ -17,7 +17,6 @@ export class SaveSystem {
   gameInstance: any;
   saveSlots: number;
   currentSaveSlot: number;
-  maxCookieSize: number;
   saveCategories: SaveCategories;
   /** Interval handle for auto-save; set by enableAutoSave(). */
   autoSaveInterval?: ReturnType<typeof setInterval> | null;
@@ -26,8 +25,7 @@ export class SaveSystem {
     this.gameInstance = gameInstance;
     this.saveSlots = 1; // Number of save slots available
     this.currentSaveSlot = 0;
-    this.maxCookieSize = 3500; // Conservative cookie size limit to account for encoding overhead
-    
+
     // Data categories for organized saving
     this.saveCategories = {
       PLAYER: 'player',
@@ -40,25 +38,24 @@ export class SaveSystem {
 
   // Main save function
   saveGame(slotNumber = this.currentSaveSlot) {
+    // Network mode is server-authoritative: progress lives on the server, so refuse
+    // local writes. This guards every path (manual quick save, autosave timer,
+    // menu save) at the single point where data is persisted.
+    if (this.gameInstance.sessionMode === 'network') {
+      console.log('Skipping local save: progress is persisted by the server in network mode.');
+      return false;
+    }
     try {
       console.log(`Saving game to slot ${slotNumber}...`);
-      
+
       const saveData = this.collectGameData();
       const serializedData = JSON.stringify(saveData);
       console.log(`Save data size: ${serializedData.length} bytes`);
-      
-      // Check if data fits in single cookie (account for URL encoding overhead)
-      const encodedSize = encodeURIComponent(serializedData).length;
-      console.log(`Encoded save data size: ${encodedSize} bytes`);
-      
-      if (encodedSize > this.maxCookieSize) {
-        console.log('Save data too large for single cookie, using chunked storage');
-        this.saveDataInChunks(slotNumber, serializedData);
-      } else {
-        console.log('Save data fits in single cookie');
-        this.setCookie(`cozyAdventure_save_${slotNumber}`, serializedData, 30);
-      }
-      
+
+      // Single localStorage write: top-level origin, ~5 MB quota, so no chunking needed
+      // (the old cookie path chunked only because of the ~4 KB per-cookie limit).
+      this.setLocalStorage(`cozyAdventure_save_${slotNumber}`, serializedData, 30);
+
       // Save metadata
       this.saveMetadata(slotNumber);
       
@@ -425,42 +422,6 @@ export class SaveSystem {
     return buildings;
   }
 
-  // Save data in chunks if too large for single cookie
-  saveDataInChunks(slotNumber: number, data: string) {
-    // Calculate safe chunk size accounting for encoding overhead and cookie name
-    const cookieNameOverhead = `cozyAdventure_save_${slotNumber}_chunk_999`.length + 10; // Extra safety margin
-    const safeChunkSize = Math.floor(this.maxCookieSize * 0.75); // 75% of max size for safety
-    const chunks = [];
-    
-    console.log(`Chunking data of ${data.length} bytes into chunks of max ${safeChunkSize} bytes`);
-    
-    for (let i = 0; i < data.length; i += safeChunkSize) {
-      chunks.push(data.slice(i, i + safeChunkSize));
-    }
-    
-    console.log(`Created ${chunks.length} chunks`);
-    
-    // Save each chunk with verification
-    let savedChunks = 0;
-    chunks.forEach((chunk, index) => {
-      const chunkName = `cozyAdventure_save_${slotNumber}_chunk_${index}`;
-      const encodedChunkSize = encodeURIComponent(chunk).length;
-      
-      if (encodedChunkSize > this.maxCookieSize) {
-        console.error(`Chunk ${index} is still too large: ${encodedChunkSize} bytes`);
-        // Force use localStorage for this chunk
-        this.setLocalStorage(chunkName, chunk, 30);
-      } else {
-        this.setCookie(chunkName, chunk, 30);
-      }
-      savedChunks++;
-    });
-    
-    // Save chunk metadata
-    this.setCookie(`cozyAdventure_save_${slotNumber}_chunks`, chunks.length.toString(), 30);
-    console.log(`Successfully saved ${savedChunks} chunks for slot ${slotNumber}`);
-  }
-
   // Save metadata about the save file
   saveMetadata(slotNumber: number) {
     const metadata = {
@@ -471,8 +432,8 @@ export class SaveSystem {
       location: 'Starting Area', // Future location system
       version: '1.0.0'
     };
-    
-    this.setCookie(`cozyAdventure_meta_${slotNumber}`, JSON.stringify(metadata), 30);
+
+    this.setLocalStorage(`cozyAdventure_meta_${slotNumber}`, JSON.stringify(metadata), 30);
   }
 
   // Load game from specified slot
@@ -510,34 +471,15 @@ export class SaveSystem {
     }
   }
 
-  // Load game data from cookies
+  // Load game data from localStorage
   loadGameData(slotNumber: number) {
     try {
-      // Check if data is chunked
-      const chunkCount = this.getCookie(`cozyAdventure_save_${slotNumber}_chunks`);
-      
-      let rawData = '';
-      
-      if (chunkCount) {
-        // Load chunked data
-        console.log(`Loading chunked save data: ${chunkCount} chunks`);
-        for (let i = 0; i < parseInt(chunkCount); i++) {
-          const chunk = this.getCookie(`cozyAdventure_save_${slotNumber}_chunk_${i}`);
-          if (chunk) {
-            rawData += chunk;
-          } else {
-            throw new Error(`Missing chunk ${i} for save slot ${slotNumber}`);
-          }
-        }
-      } else {
-        // Load single cookie data
-        const saveData = this.getCookie(`cozyAdventure_save_${slotNumber}`);
-        if (!saveData) {
-          return null;
-        }
-        rawData = saveData;
+      const saveData = this.getLocalStorage(`cozyAdventure_save_${slotNumber}`);
+      if (!saveData) {
+        return null;
       }
-      
+      let rawData = saveData;
+
       // Validate the raw data before parsing
       if (!rawData || typeof rawData !== 'string') {
         throw new Error('Save data is empty or not a string');
@@ -1272,28 +1214,16 @@ export class SaveSystem {
 
   // Get metadata for a save slot
   getSaveMetadata(slotNumber: number) {
-    const metadataString = this.getCookie(`cozyAdventure_meta_${slotNumber}`);
+    const metadataString = this.getLocalStorage(`cozyAdventure_meta_${slotNumber}`);
     return metadataString ? JSON.parse(metadataString) : null;
   }
 
   // Delete a save slot
   deleteSave(slotNumber: number): boolean {
     try {
-      // Delete main save data
-      this.deleteCookie(`cozyAdventure_save_${slotNumber}`);
-      
-      // Delete chunked data if it exists
-      const chunkCount = this.getCookie(`cozyAdventure_save_${slotNumber}_chunks`);
-      if (chunkCount) {
-        for (let i = 0; i < parseInt(chunkCount); i++) {
-          this.deleteCookie(`cozyAdventure_save_${slotNumber}_chunk_${i}`);
-        }
-        this.deleteCookie(`cozyAdventure_save_${slotNumber}_chunks`);
-      }
-      
-      // Delete metadata
-      this.deleteCookie(`cozyAdventure_meta_${slotNumber}`);
-      
+      this.deleteLocalStorage(`cozyAdventure_save_${slotNumber}`);
+      this.deleteLocalStorage(`cozyAdventure_meta_${slotNumber}`);
+
       console.log(`Save slot ${slotNumber} deleted`);
       return true;
     } catch (error) {
@@ -1302,77 +1232,9 @@ export class SaveSystem {
     }
   }
 
-  // Cookie utility functions with localStorage fallback
-  setCookie(name: string, value: string, days: number) {
-    try {
-      const expires = new Date();
-      expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-      
-      // Use SameSite=None for cross-site compatibility, but only if secure
-      const isSecure = window.location.protocol === 'https:';
-      const sameSite = isSecure ? 'None' : 'Lax';
-      const secureFlag = isSecure ? ';Secure' : '';
-      const partitionedFlag = isSecure ? ';Partitioned' : '';
-      
-      const encodedValue = encodeURIComponent(value);
-      const cookieString = `${name}=${encodedValue};expires=${expires.toUTCString()};path=/;SameSite=${sameSite}${secureFlag}${partitionedFlag}`;
-      
-      // Check total cookie size before setting
-      if (cookieString.length > 4096) {
-        throw new Error(`Cookie too large: ${cookieString.length} bytes (max 4096)`);
-      }
-      
-      document.cookie = cookieString;
-      
-      // Verify cookie was set by trying to read it back
-      const testValue = this.getCookieOnly(name);
-      if (!testValue || testValue !== value) {
-        throw new Error('Cookie verification failed - value mismatch');
-      }
-    } catch (error: any) {
-      console.warn(`Cookie failed for ${name}, falling back to localStorage:`, error.message);
-      this.setLocalStorage(name, value, days);
-    }
-  }
-  getCookieOnly(name: string): string | null {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-      let c = ca[i];
-      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-      if (c.indexOf(nameEQ) === 0) {
-        return decodeURIComponent(c.substring(nameEQ.length, c.length));
-      }
-    }
-    return null;
-  }
-  getCookie(name: string): string | null {
-    // Try cookie first
-    const cookieValue = this.getCookieOnly(name);
-    if (cookieValue !== null) {
-      return cookieValue;
-    }
-    
-    // Fallback to localStorage
-    return this.getLocalStorage(name);
-  }
-  deleteCookie(name: string) {
-    try {
-      // Use same SameSite setting as setCookie for consistency
-      const isSecure = window.location.protocol === 'https:';
-      const sameSite = isSecure ? 'None' : 'Lax';
-      const secureFlag = isSecure ? ';Secure' : '';
-      const partitionedFlag = isSecure ? ';Partitioned' : '';
-      
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;SameSite=${sameSite}${secureFlag}${partitionedFlag}`;
-    } catch (error: any) {
-      console.warn(`Cookie deletion failed for ${name}:`, error.message);
-    }
-    
-    // Also remove from localStorage
-    this.deleteLocalStorage(name);
-  }
-  // localStorage utility functions
+  // localStorage utility functions. Saves live in localStorage at the top-level origin
+  // (no cookies / iframe-partitioning workarounds). Values are wrapped with an expiry so a
+  // slot auto-expires if untouched for `days`; every save/autosave refreshes it.
   setLocalStorage(name: string, value: string, days: number) {
     try {
       const expires = Date.now() + (days * 24 * 60 * 60 * 1000);
