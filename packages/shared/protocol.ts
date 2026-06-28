@@ -10,7 +10,6 @@ import type {
   PlayerState,
   WorldSnapshot,
   WorldDiff,
-  BuildingCell,
 } from './state';
 import type { ResourceNodeKind } from './resourceNodes';
 
@@ -40,12 +39,13 @@ export const DYNAMIC_NETWORK_ID_BASE = 1_000_000;
 
 export type WorldCommand =
   | {
+      // No `cell`: the server derives the footprint cells from position + rotation +
+      // level (so a client can't reserve one cell while rendering somewhere else).
       type: 'place_building';
       registryType: string;
       position: Vec3;
       rotation: Vec3;
       level: number;
-      cell: BuildingCell;
     }
   | { type: 'harvest_node'; networkId: number; nodeKind: ResourceNodeKind }
   | { type: 'pickup_drop'; networkId: number }
@@ -59,6 +59,7 @@ export type RejectReason =
   | 'already_consumed'
   | 'cell_occupied'
   | 'inventory_full'
+  | 'insufficient_resources'
   | 'unknown_entity'
   | 'invalid';
 
@@ -201,6 +202,10 @@ export interface PongMessage {
 
 export type ErrorCode =
   | 'auth'
+  // A playerId was presented without a valid token (e.g. a stale token after the server
+  // restarted with a new secret). Distinct from 'auth' (password) so the client knows it
+  // is safe to drop the stored identity and retry as a fresh character.
+  | 'identity'
   | 'world_full'
   | 'protocol_version'
   | 'bad_message'

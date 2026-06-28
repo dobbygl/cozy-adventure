@@ -147,7 +147,10 @@ export class NetworkSystem {
               });
             } else if (msg.t === 'error') {
               clearTimeout(timer);
-              fail(new Error(`${msg.code}: ${msg.message}`));
+              // Attach the code so callers can branch (e.g. drop a stale identity on 'identity').
+              const err = new Error(`${msg.code}: ${msg.message}`) as Error & { code?: ErrorCode };
+              err.code = msg.code;
+              fail(err);
             } else if (msg.t === 'kick') {
               clearTimeout(timer);
               fail(new Error(`kicked: ${msg.reason}`));

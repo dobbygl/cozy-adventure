@@ -75,7 +75,14 @@ export interface BuildingState {
   position: Vec3;
   rotation: Vec3;
   level: number;
+  /** Anchor cell (kept for convenience/back-compat). Always one of {@link cells}. */
   cell: BuildingCell;
+  /**
+   * Every grid cell this building occupies (its footprint), derived server-side from
+   * registryType + position + rotation. The conflict set: ALL of these are reserved,
+   * not just the anchor, so two large buildings can't legally overlap.
+   */
+  cells: BuildingCell[];
   ownerPlayerId: string;
 }
 

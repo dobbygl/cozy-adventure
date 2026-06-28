@@ -7,7 +7,7 @@ import type {
   BuildingState,
   DropState,
 } from '@cozy/shared';
-import { getResourceNode } from '@cozy/shared';
+import { getResourceNode, getBuildable, buildingFootprintCells, buildingGridCoord } from '@cozy/shared';
 import type { World } from './World';
 import { addItem, removeItem } from './inventory';
 import { distanceXZ } from './geometry';
@@ -93,25 +93,48 @@ function harvestNode(
     : { ok: true, diff };
 }
 
+/**
+ * Place a building, fully server-authoritative. The server trusts NONE of the geometry:
+ * - the registry type must be in the catalog, else the type is unknown (a modified client
+ *   could otherwise inject a bogus type that corrupts other clients);
+ * - the footprint cells are DERIVED from position+rotation+level (never a client-sent
+ *   cell), and EVERY cell must be free — two large buildings can't legally overlap;
+ * - the wood cost is consumed from the player's inventory, and only AFTER every placement
+ *   check passes, so a rejected build never charges. A modified client cannot build for free.
+ */
 function placeBuilding(
   ctx: CommandContext,
   cmd: Extract<WorldCommand, { type: 'place_building' }>,
   now: number
 ): CommandOutcome {
-  if (ctx.world.isCellOccupied(cmd.cell)) return { ok: false, reason: 'cell_occupied' };
+  const def = getBuildable(cmd.registryType);
+  if (!def) return { ok: false, reason: 'invalid' };
   if (!inReach(ctx, cmd.position)) return { ok: false, reason: 'out_of_range' };
+
+  const cells = buildingFootprintCells(def.footprint, cmd.position, cmd.rotation.y, cmd.level);
+  for (const cell of cells) {
+    if (ctx.world.isCellOccupied(cell)) return { ok: false, reason: 'cell_occupied' };
+  }
+
+  // Charge last: if the cost can't be paid the world is untouched (no mutation happened).
+  if (!removeItem(ctx.player.inventory, 'wood', def.cost.wood)) {
+    return { ok: false, reason: 'insufficient_resources' };
+  }
+
+  const anchor = { level: cmd.level, gx: buildingGridCoord(cmd.position.x), gz: buildingGridCoord(cmd.position.z) };
   const entity: BuildingState = {
     networkId: ctx.world.allocateNetworkId(),
     registryType: cmd.registryType,
     position: cmd.position,
     rotation: cmd.rotation,
     level: cmd.level,
-    cell: cmd.cell,
+    cell: anchor,
+    cells,
     ownerPlayerId: ctx.player.playerId,
   };
   const diff: WorldDiff = { type: 'building_placed', entity, at: now };
   ctx.world.recordDiff(diff);
-  return { ok: true, diff };
+  return { ok: true, diff, inventoryDelta: { itemId: 'wood', delta: -def.cost.wood } };
 }
 
 function pickupDrop(

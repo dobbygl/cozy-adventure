@@ -66,15 +66,18 @@ export function applyWorldDiff(state: WorldDerivedState, diff: WorldDiff): boole
       state.nodeHealth.delete(diff.networkId);
       return true;
     }
-    case 'building_placed':
+    case 'building_placed': {
       if (state.buildings.has(diff.entity.networkId)) return false;
       state.buildings.set(diff.entity.networkId, diff.entity);
-      state.occupiedCells.add(cellKey(diff.entity.cell));
+      // Reserve EVERY footprint cell, not just the anchor. `cells` is the canonical
+      // set; fall back to the anchor for any diff persisted before it existed.
+      for (const cell of diff.entity.cells ?? [diff.entity.cell]) state.occupiedCells.add(cellKey(cell));
       return true;
+    }
     case 'building_removed': {
       const existing = state.buildings.get(diff.networkId);
       if (!existing) return false;
-      state.occupiedCells.delete(cellKey(existing.cell));
+      for (const cell of existing.cells ?? [existing.cell]) state.occupiedCells.delete(cellKey(cell));
       state.buildings.delete(diff.networkId);
       return true;
     }

@@ -77,17 +77,32 @@ describe('P3 keepalive, timeout and reconnect', () => {
     // A victim joins; every peer can see their playerId, but not their token.
     const { c: victim, joined: jv } = await joinClient(ctx.url);
 
-    // An attacker who knows the playerId but presents no / a wrong token is rejected.
+    // An attacker who knows the playerId but presents no / a wrong token is rejected with
+    // 'identity' (distinct from password 'auth', so a client knows to drop a stale token).
     const noToken = await MockClient.connect(ctx.url);
     noToken.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: jv.playerId });
-    expect((await noToken.waitFor('error')).code).toBe('auth');
+    expect((await noToken.waitFor('error')).code).toBe('identity');
 
     const wrongToken = await MockClient.connect(ctx.url);
     wrongToken.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: jv.playerId, token: 'deadbeef' });
-    expect((await wrongToken.waitFor('error')).code).toBe('auth');
+    expect((await wrongToken.waitFor('error')).code).toBe('identity');
 
     // The victim was never kicked.
     expect(victim.isClosed).toBe(false);
     victim.close();
+  });
+
+  it('rejects a token minted under a different secret (server restarted) with identity', async () => {
+    // Default servers use a random per-boot secret, so a restart invalidates old tokens.
+    const first = await startTestServer({ AUTH_SECRET: 'secret-A' });
+    const { joined } = await joinClient(first.url);
+    await first.server.stop();
+
+    ctx = await startTestServer({ AUTH_SECRET: 'secret-B' });
+    const c = await MockClient.connect(ctx.url);
+    c.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: joined.playerId, token: joined.token });
+    // 'identity' (not 'auth') tells the client to drop its stale identity and retry fresh.
+    expect((await c.waitFor('error')).code).toBe('identity');
+    c.close();
   });
 });

@@ -25,7 +25,7 @@ import { NetworkSession } from './net/NetworkSession.js';
 import { RemotePlayer } from './net/RemotePlayer.js';
 import { getSelectedPlayerModel, type PlayerModelId } from './playerModel.js';
 import { getPlayerName } from './playerName.js';
-import { getStoredIdentity, setStoredIdentity } from './playerIdentity.js';
+import { getStoredIdentity, setStoredIdentity, clearStoredIdentity } from './playerIdentity.js';
 
 /** Narrow a peer's model id string to a known PlayerModelId, or undefined (use default). */
 function coerceModelId(id?: string): PlayerModelId | undefined {
@@ -160,8 +160,8 @@ export class Game {
       // Identity: present our stored { playerId, token } so the server lets us reclaim
       // our persisted character; on first ever join we send neither and it mints them.
       // displayName is our chosen name (empty => server falls back to a generated one).
-      const identity = getStoredIdentity();
-      this.network = new NetworkSession({
+      const makeSession = (identity: ReturnType<typeof getStoredIdentity>) =>
+        new NetworkSession({
         config: {
           url: multiplayer.url,
           password: multiplayer.password,
@@ -211,7 +211,20 @@ export class Game {
           onError: (code, message) => console.warn(`Network error: ${code} ${message}`),
         },
       });
-      const joined = await this.network.connect();
+
+      this.network = makeSession(getStoredIdentity());
+      const joined = await this.network.connect().catch(async (err) => {
+        // A stale stored identity (e.g. the server restarted with a new random secret) is
+        // rejected with 'identity'. Drop it and retry ONCE as a fresh character, so the
+        // player is never permanently locked out. Any other error propagates to the menu.
+        if ((err as { code?: string }).code !== 'identity') throw err;
+        console.warn('Stored multiplayer identity was rejected; starting a fresh character.');
+        clearStoredIdentity();
+        this.network?.destroy();
+        const fresh = makeSession(null);
+        this.network = fresh;
+        return fresh.connect();
+      });
       // Persist the server-issued identity so a reload/reconnect recovers this same
       // character (and proves ownership via the token). Safe to overwrite each join.
       setStoredIdentity(joined.playerId, joined.token);

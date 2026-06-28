@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
+import { feedWood } from '../harness/feedWood';
 
 describe('P2 command validation (rejection without mutation)', () => {
   let ctx: TestServer | undefined;
@@ -46,23 +47,23 @@ describe('P2 command validation (rejection without mutation)', () => {
   it('rejects building in an occupied cell', async () => {
     ctx = await startTestServer();
     const { c } = await joinClient(ctx.url);
-    const cell = { level: 0, gx: 1, gz: 1 };
-    const build = (seq: number) => ({
+    const seq = await feedWood(c, 20, 800_000); // enough for two walls
+    const build = (s: number) => ({
       t: 'command' as const,
-      seq,
+      seq: s,
       cmd: {
         type: 'place_building' as const,
         registryType: 'wall',
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
         level: 0,
-        cell,
       },
     });
-    c.send(build(1));
+    c.send(build(seq + 1));
     const ev = await c.waitFor('event');
     expect(ev.diff.type).toBe('building_placed');
-    c.send(build(2));
+    // Same position -> same derived footprint -> the cell is taken.
+    c.send(build(seq + 2));
     const rej = await c.waitFor('command_rejected');
     expect(rej.reason).toBe('cell_occupied');
     c.close();

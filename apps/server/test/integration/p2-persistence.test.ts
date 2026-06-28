@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RESOURCE_NODES, totalYieldFor } from '@cozy/shared';
+import { RESOURCE_NODES, totalYieldFor, BUILDABLES } from '@cozy/shared';
 import { startTestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
 import { MemoryStore } from '../../src/persistence/MemoryStore';
@@ -25,13 +25,15 @@ describe('P2 persistence', () => {
     // Network mode yields exactly single-player's per-tree total (13).
     expect(woodGained).toBe(totalYieldFor(RESOURCE_NODES.tree));
 
+    // Build a wall (server derives the cells and consumes wood). 13 gained - 10 cost = 3.
     a.send({
       t: 'command',
       seq: hits + 1,
-      cmd: { type: 'place_building', registryType: 'wall', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, level: 0, cell: { level: 0, gx: 0, gz: 0 } },
+      cmd: { type: 'place_building', registryType: 'wall', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, level: 0 },
     });
     const buildEv = await a.waitFor('event');
     const buildingId = buildEv.diff.type === 'building_placed' ? buildEv.diff.entity.networkId : -1;
+    const woodAfterBuild = woodGained - BUILDABLES.wall.cost.wood;
 
     await ctxA.server.stop(); // persistAll -> store
 
@@ -45,8 +47,8 @@ describe('P2 persistence', () => {
     // id space preserved across reload (no reuse).
     expect(jb.world.nextNetworkId).toBe(buildingId + 1);
     expect(jb.world.buildings.some((bd) => bd.networkId === buildingId)).toBe(true);
-    // player progress restored: the exact wood gained from felling the tree.
-    expect(countItem(jb.player.inventory, 'wood')).toBe(woodGained);
+    // player progress restored: wood gained from felling, minus the wall's cost.
+    expect(countItem(jb.player.inventory, 'wood')).toBe(woodAfterBuild);
 
     b.close();
     await ctxB.server.stop();

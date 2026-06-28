@@ -34,6 +34,20 @@ describe('client reconnect recovers identity (P3)', () => {
     expect(second.seed).toBe(first.seed); // same world
   });
 
+  it('rejects an invalid stored token with an identity-coded error (drives client self-heal)', async () => {
+    ctx = await startTestServer();
+    const a = new NetworkSystem({ url: ctx.url });
+    nets.push(a);
+    const first = await a.connect();
+    a.destroy();
+
+    // A wrong token (e.g. the server restarted with a new secret) is rejected; the error
+    // carries code 'identity' so Game can clear the stored identity and retry fresh.
+    const a2 = new NetworkSystem({ url: ctx.url, playerId: first.playerId, token: 'not-the-real-token' });
+    nets.push(a2);
+    await expect(a2.connect()).rejects.toMatchObject({ code: 'identity' });
+  });
+
   it('a fresh client (no playerId) gets a new identity', async () => {
     ctx = await startTestServer();
     const a = new NetworkSystem({ url: ctx.url });

@@ -46,13 +46,19 @@ describe('two-client world conflicts are authoritative (SC-003)', () => {
 
   it('place_building in the same cell: exactly one is rejected (one build per cell)', async () => {
     const { a, b, rejections } = await twoClients();
+    // Building costs server-side wood now: both gather first (distinct trees).
+    for (let i = 0; i < RESOURCE_NODES.tree.maxHealth; i++) {
+      a.sendCommand({ type: 'harvest_node', networkId: 800_000, nodeKind: 'tree' });
+      b.sendCommand({ type: 'harvest_node', networkId: 850_000, nodeKind: 'tree' });
+    }
+    await sleep(200);
+    // Same world position => same server-derived footprint; no client-sent cell.
     const place: WorldCommand = {
       type: 'place_building',
       registryType: 'wall',
       position: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
       level: 0,
-      cell: { level: 0, gx: 3, gz: 4 },
     };
     a.sendCommand(place);
     b.sendCommand(place);

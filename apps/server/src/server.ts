@@ -315,7 +315,8 @@ export class GameServer {
     if (msg.playerId) {
       if (!msg.token || !verifyToken(msg.playerId, msg.token, this.config.authSecret)) {
         this.logger.warn({ playerId: msg.playerId }, 'rejected join: invalid identity token');
-        this.sendError(session.conn, 'auth', 'invalid or missing identity token');
+        // 'identity' (not 'auth'): the client should drop its stale identity and retry fresh.
+        this.sendError(session.conn, 'identity', 'invalid or missing identity token');
         session.conn.close();
         return;
       }

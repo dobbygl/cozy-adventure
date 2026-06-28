@@ -12,15 +12,12 @@ const movement = z.enum(['idle', 'walking', 'running']);
 const worldCommand = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('place_building'),
-    registryType: z.string(),
+    // Validity (is it a known buildable?) is checked against the catalog in
+    // applyCommand; here we only bound the length. No `cell`: the server derives it.
+    registryType: z.string().max(64),
     position: vec3,
     rotation: vec3,
     level: z.number().int(),
-    cell: z.object({
-      level: z.number().int(),
-      gx: z.number().int(),
-      gz: z.number().int(),
-    }),
   }),
   z.object({
     type: z.literal('harvest_node'),

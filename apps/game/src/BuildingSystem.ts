@@ -7,7 +7,8 @@ import { LevelManager } from './LevelManager.js';
 import type { Inventory, Item } from './inventory.js';
 import type { CollisionSystem } from './CollisionSystem.js';
 import type { BuildableObject } from './BuildableObjectsRegistry.js';
-import type { Vec3, BuildingCell, BuildingState } from '@cozy/shared';
+import type { Vec3, BuildingState } from '@cozy/shared';
+import { buildingFootprintCells, buildingGridCoord } from '@cozy/shared';
 
 /** Payload Game needs to emit a place_building command (multiplayer). */
 export interface PlaceBuildingRequest {
@@ -15,7 +16,6 @@ export interface PlaceBuildingRequest {
   position: Vec3;
   rotation: Vec3;
   level: number;
-  cell: BuildingCell;
 }
 
 export class BuildingSystem {
@@ -698,112 +698,34 @@ updateLevelReferences() {
   }
   
   getCellKey(position: THREE.Vector3) {
-    // Create unique key for grid cell with precise rounding
-    const gridX = Math.round((position.x + 0.001) / this.gridSize); // Add tiny offset to handle floating point precision
-    const gridZ = Math.round((position.z + 0.001) / this.gridSize);
+    // Delegate the grid rounding to the shared helper so the client and the
+    // server (which derives cells from position) agree on the anchor cell.
+    const gridX = buildingGridCoord(position.x, this.gridSize);
+    const gridZ = buildingGridCoord(position.z, this.gridSize);
     return `${gridX},${gridZ}`;
   }
-  
-  getOccupiedCells(position: THREE.Vector3, rotation: number) {
-    // Get current build object to determine cell size
+
+  getOccupiedCells(position: THREE.Vector3, rotation: number): string[] {
+    // The footprint math lives in @cozy/shared so this preview matches exactly what
+    // the server validates and reserves (no client/server drift on conflicts). We feed
+    // it the registry footprint; the server feeds its catalog footprint (kept equal).
     const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
     const cellSize = currentBuildObject ? currentBuildObject.cellSize : 3.5;
-    
-    // Use precise grid coordinate calculation to avoid floating point errors
-    const gridX = Math.round((position.x + 0.001) / this.gridSize);
-    const gridZ = Math.round((position.z + 0.001) / this.gridSize);
-    const occupiedCells: string[] = [];
+    const footprint =
+      typeof cellSize === 'object' && cellSize.width && cellSize.height
+        ? { width: cellSize.width, height: cellSize.height }
+        : { width: cellSize as number, height: 1 };
+    // Level 0 here: cell keys are per-level strings ("gx,gz"); the level is tracked
+    // separately by LevelManager, so the string form needs only the grid coords.
+    return buildingFootprintCells(
+      footprint,
+      { x: position.x, y: position.y, z: position.z },
+      rotation,
+      0,
+      this.gridSize
+    ).map((c) => `${c.gx},${c.gz}`);
+  }
 
-    // Normalize rotation to handle floating point precision issues  
-    const normalizedRotation = Math.round((rotation * 180 / Math.PI) / 90) * 90;
-    // Handle negative rotations properly
-    const positiveRotation = ((normalizedRotation % 360) + 360) % 360;
-    
-    // Check if cellSize is an object with width and height properties
-    let cellWidth: number;
-    let cellHeight: number;
-    if (typeof cellSize === 'object' && cellSize.width && cellSize.height) {
-      cellWidth = cellSize.width;
-      cellHeight = cellSize.height;
-      console.log(`Getting occupied cells for ${currentBuildObject?.name || 'wall'} (${cellWidth}x${cellHeight} cells) at position (${gridX}, ${gridZ}) with rotation ${positiveRotation}°`);
-    } else {
-      // Legacy support for numeric cellSize
-      cellWidth = cellSize as number;
-      cellHeight = 1.0;
-      console.log(`Getting occupied cells for ${currentBuildObject?.name || 'wall'} (${cellWidth} cells) at position (${gridX}, ${gridZ}) with rotation ${positiveRotation}°`);
-    }
-    
-    console.log(`World position: (${position.x.toFixed(3)}, ${position.z.toFixed(3)})`);
-    
-    // Calculate rotated cell pattern based on wall rotation
-    this.calculateRotatedCells(gridX, gridZ, cellWidth, cellHeight, positiveRotation, occupiedCells);
-    
-    console.log(`Total cells occupied: ${occupiedCells.length}`, occupiedCells);
-    return occupiedCells;
-  }
-  
-  calculateRotatedCells(
-    centerX: number,
-    centerZ: number,
-    width: number,
-    height: number,
-    rotation: number,
-    occupiedCells: string[]
-  ) {
-    // Calculate the range of cells relative to center
-    const halfWidth = Math.floor(width / 2);
-    const halfHeight = Math.floor(height / 2);
-    
-    // Generate cell offsets in local space (before rotation)
-    const localCells = [];
-    for (let dx = -halfWidth; dx < width - halfWidth; dx++) {
-      for (let dz = -halfHeight; dz < height - halfHeight; dz++) {
-        localCells.push({ x: dx, z: dz });
-      }
-    }
-    
-    // Apply rotation transformation to each cell offset
-    localCells.forEach(localCell => {
-      let rotatedX, rotatedZ;
-      
-      switch (rotation) {
-        case 0:
-          // No rotation
-          rotatedX = localCell.x;
-          rotatedZ = localCell.z;
-          break;
-        case 90:
-          // 90° clockwise: (x,z) -> (-z,x)
-          rotatedX = -localCell.z;
-          rotatedZ = localCell.x;
-          break;
-        case 180:
-          // 180° rotation: (x,z) -> (-x,-z)
-          rotatedX = -localCell.x;
-          rotatedZ = -localCell.z;
-          break;
-        case 270:
-          // 270° clockwise (or 90° counter-clockwise): (x,z) -> (z,-x)
-          rotatedX = localCell.z;
-          rotatedZ = -localCell.x;
-          break;
-        default:
-          // Fallback to no rotation
-          rotatedX = localCell.x;
-          rotatedZ = localCell.z;
-      }
-      
-      // Convert rotated offset to world grid coordinates
-      const worldX = centerX + rotatedX;
-      const worldZ = centerZ + rotatedZ;
-      const cellKey = `${worldX},${worldZ}`;
-      occupiedCells.push(cellKey);
-    });
-    
-    console.log(`  ${width}x${height} object rotated ${rotation}° occupies ${occupiedCells.length} cells`);
-    console.log(`  Cell pattern:`, occupiedCells);
-  }
-  
   buildWall() {
     const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
     if (!this.previewMesh || !currentBuildObject || !currentBuildObject.mesh) return;
@@ -857,22 +779,18 @@ updateLevelReferences() {
     console.log('  Claiming cells:', occupiedCells);
 
     // Multiplayer: placement is server-authoritative. Emit a place_building command
-    // (with the anchor cell) and let the confirmed building_placed event materialize
-    // it on every client. Resources are consumed optimistically (a rejected placement
-    // is not refunded in v1). In local mode requestPlace is null and we build directly.
+    // (position + rotation + level; the server derives the footprint cells) and let the
+    // confirmed building_placed event materialize it on every client. The server also
+    // validates the type and CONSUMES the cost, returning an inventory_delta — so we do
+    // NOT deduct locally here (that would double-charge). The hasRequiredResources()
+    // gate above is a courtesy pre-check; the server is authoritative. In local mode
+    // requestPlace is null and we build directly (consuming resources ourselves).
     if (this.requestPlace) {
-      const cell: BuildingCell = {
-        level: this.levelManager.currentLevel,
-        gx: Math.round((buildPosition.x + 0.001) / this.gridSize),
-        gz: Math.round((buildPosition.z + 0.001) / this.gridSize),
-      };
-      this.consumeResources();
       this.requestPlace({
         registryType: this.selectedBuildObject,
         position: { x: buildPosition.x, y: buildPosition.y, z: buildPosition.z },
         rotation: { x: 0, y: this.currentRotation, z: 0 },
-        level: cell.level,
-        cell,
+        level: this.levelManager.currentLevel,
       });
       return;
     }

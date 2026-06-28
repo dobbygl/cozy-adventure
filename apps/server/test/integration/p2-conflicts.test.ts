@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { RESOURCE_NODES } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
+import { feedWood } from '../harness/feedWood';
 
 describe('P2 conflict resolution (single winner)', () => {
   let ctx: TestServer | undefined;
@@ -40,7 +41,11 @@ describe('P2 conflict resolution (single winner)', () => {
     const { c: b } = await joinClient(ctx.url);
     await a.waitFor('peer_joined');
 
-    const cell = { level: 0, gx: 3, gz: 4 };
+    // Both need wood to attempt the build (distinct tree ids; node health is global).
+    const seqA = await feedWood(a, 10, 800_000);
+    const seqB = await feedWood(b, 10, 850_000);
+
+    // Same world position => same server-derived footprint => they contend for it.
     const build = (seq: number) => ({
       t: 'command' as const,
       seq,
@@ -50,11 +55,10 @@ describe('P2 conflict resolution (single winner)', () => {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
         level: 0,
-        cell,
       },
     });
-    a.send(build(1));
-    b.send(build(1));
+    a.send(build(seqA + 1));
+    b.send(build(seqB + 1));
 
     const placed = (await a.collect('event', 300)).filter((e) => e.diff.type === 'building_placed');
     expect(placed).toHaveLength(1);

@@ -6,3 +6,4 @@ export * from './state';
 export * from './worldState';
 export * from './resourceNodes';
 export * from './displayName';
+export * from './buildings';

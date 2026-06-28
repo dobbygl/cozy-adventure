@@ -45,3 +45,12 @@ export function setStoredIdentity(playerId: string, token: string): void {
     // Storage unavailable: identity won't persist across reloads (still works in-session).
   }
 }
+
+/** Forget the stored identity (e.g. after the server rejects a stale token). */
+export function clearStoredIdentity(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // Storage unavailable: nothing to clear.
+  }
+}
