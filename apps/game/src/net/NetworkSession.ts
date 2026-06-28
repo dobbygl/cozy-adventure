@@ -5,7 +5,7 @@ import {
   type AvatarStateInput,
   type JoinResult,
 } from './NetworkSystem.js';
-import { RemotePlayerManager, type RemotePlayerFactory } from './RemotePlayerManager.js';
+import { RemotePlayerManager, type RemotePlayerFactory, type RemoteAction } from './RemotePlayerManager.js';
 import { ClientWorld, type WorldChangeHandlers } from './ClientWorld.js';
 import type {
   WorldCommand,
@@ -205,6 +205,11 @@ export class NetworkSession {
   /** Request a world mutation; returns the per-session seq (applied on the confirmed event). */
   sendCommand(cmd: WorldCommand): number {
     return this.net.sendCommand(cmd);
+  }
+
+  /** Play a one-shot action on a remote avatar (e.g. the chop swing of a confirmed harvest). */
+  playRemoteAction(playerId: string, action: RemoteAction): void {
+    this.remotes?.playAction(playerId, action);
   }
 
   /** Advance remote avatars (interpolation + animation). `renderTime` in ms. */

@@ -25,9 +25,19 @@ export interface WorldChangeHandlers {
    * false during snapshot replay (a late-joiner should see the damaged STATE — e.g.
    * the darker trunk — without spurious shake animations for hits it never witnessed).
    */
-  onNodeDamaged?(networkId: number, kind: ResourceNodeKind, health: number, animate: boolean): void;
-  /** A resource node was harvested to depletion (remove it from the scene). */
-  onNodeDepleted?(networkId: number, kind: ResourceNodeKind): void;
+  onNodeDamaged?(
+    networkId: number,
+    kind: ResourceNodeKind,
+    health: number,
+    animate: boolean,
+    byPlayerId: string
+  ): void;
+  /**
+   * A resource node was harvested to depletion (remove it from the scene). `byPlayerId`
+   * is the harvester and `animate` is true for a live event (so the harvester's avatar
+   * can play the felling swing) and false during snapshot replay.
+   */
+  onNodeDepleted?(networkId: number, kind: ResourceNodeKind, byPlayerId: string, animate: boolean): void;
   onBuildingPlaced?(building: BuildingState): void;
   onBuildingRemoved?(networkId: number): void;
   onDropSpawned?(drop: DropState): void;
@@ -64,10 +74,10 @@ export class ClientWorld {
     if (!applyWorldDiff(this.state, diff)) return;
     switch (diff.type) {
       case 'node_damaged':
-        this.handlers.onNodeDamaged?.(diff.networkId, diff.nodeKind, diff.health, animate);
+        this.handlers.onNodeDamaged?.(diff.networkId, diff.nodeKind, diff.health, animate, diff.byPlayerId);
         break;
       case 'node_depleted':
-        this.handlers.onNodeDepleted?.(diff.networkId, diff.nodeKind);
+        this.handlers.onNodeDepleted?.(diff.networkId, diff.nodeKind, diff.byPlayerId, animate);
         break;
       case 'building_placed':
         this.handlers.onBuildingPlaced?.(diff.entity);

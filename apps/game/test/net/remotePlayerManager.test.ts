@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RemotePlayerManager, type RemotePlayerLike } from '../../src/net/RemotePlayerManager';
+import { RemotePlayerManager, type RemotePlayerLike, type RemoteAction } from '../../src/net/RemotePlayerManager';
 import type { AvatarSnapshot, PeerInfo } from '@cozy/shared';
 
 // Headless: a fake RemotePlayer records the calls the manager makes, so we test
@@ -9,6 +9,7 @@ class FakeRemote implements RemotePlayerLike {
   disposed = false;
   pushed: AvatarSnapshot[] = [];
   updates = 0;
+  actions: RemoteAction[] = [];
   constructor(readonly playerId: string) {}
   async load(): Promise<void> {
     this.loaded = true;
@@ -18,6 +19,9 @@ class FakeRemote implements RemotePlayerLike {
   }
   update(): void {
     this.updates++;
+  }
+  playAction(action: RemoteAction): void {
+    this.actions.push(action);
   }
   dispose(): void {
     this.disposed = true;
@@ -80,6 +84,17 @@ describe('RemotePlayerManager', () => {
     mgr.update(0.016, 2000);
     expect(created.get('a')?.updates).toBe(1);
     expect(created.get('b')?.updates).toBe(1);
+  });
+
+  it('routes a one-shot action to the matching peer, skipping self and unknown', () => {
+    const { mgr, created } = setup('self');
+    mgr.addAll([peer('a'), peer('b')]);
+    mgr.playAction('a', 'axe_hit');
+    expect(created.get('a')?.actions).toEqual(['axe_hit']);
+    expect(created.get('b')?.actions).toEqual([]);
+    // self animates itself; an unknown peer must not throw.
+    mgr.playAction('self', 'axe_hit');
+    expect(() => mgr.playAction('ghost', 'axe_hit')).not.toThrow();
   });
 
   it('disposes on remove and on disposeAll', () => {

@@ -171,17 +171,36 @@ export class Game {
           token: identity?.token,
         },
         remoteFactory: (peer) =>
-          new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId), peer.displayName),
+          new RemotePlayer(
+            this.scene!,
+            peer.playerId,
+            coerceModelId(peer.modelId),
+            peer.displayName,
+            // Resolve a held-item id to a stack so the remote shows the same model the
+            // peer holds (axe/apple/...). Reads the registry at call time (it exists by then).
+            (itemId) => {
+              const item = this.itemRegistry?.[itemId];
+              return item ? { item } : null;
+            }
+          ),
         now: () => performance.now(),
         // Confirmed world diffs -> scene changes. Closures read the systems at call
         // time (they exist by begin(), after the world is built).
         worldHandlers: {
           // A resource node took a confirmed hit: show its damage (and, when live, the
           // hit shake). Trees are the only node kind today; future kinds route by `kind`.
-          onNodeDamaged: (networkId, _kind, health, animate) =>
-            this.treeChoppingSystem?.applyNetworkNodeDamage(networkId, health, animate),
-          // A resource node was harvested to depletion: remove it from the scene.
-          onNodeDepleted: (networkId, _kind) => this.environment?.removeTreeByNetworkId(networkId),
+          // On a live hit, play the chopper's swing on their remote avatar (the local
+          // actor already animated itself; playRemoteAction skips our own id).
+          onNodeDamaged: (networkId, _kind, health, animate, byPlayerId) => {
+            this.treeChoppingSystem?.applyNetworkNodeDamage(networkId, health, animate);
+            if (animate) this.network?.playRemoteAction(byPlayerId, 'axe_hit');
+          },
+          // A resource node was harvested to depletion: remove it, and animate the
+          // felling swing on the harvester's remote avatar (live events only).
+          onNodeDepleted: (networkId, _kind, byPlayerId, animate) => {
+            this.environment?.removeTreeByNetworkId(networkId);
+            if (animate) this.network?.playRemoteAction(byPlayerId, 'axe_hit');
+          },
           onBuildingPlaced: (building) => this.buildingSystem?.materializeNetworkBuilding(building),
           onBuildingRemoved: (networkId) => this.buildingSystem?.removeNetworkBuilding(networkId),
           onDropSpawned: (drop) => {

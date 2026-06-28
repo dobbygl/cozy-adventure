@@ -7,11 +7,16 @@ import type { AvatarSnapshot, PeerInfo } from '@cozy/shared';
 // Clocks are passed in (receivedAt / renderTime) rather than read here, so the
 // interpolation timing is deterministic and testable.
 
+/** A discrete, one-shot action a remote avatar can play (driven by relayed events). */
+export type RemoteAction = 'axe_hit';
+
 export interface RemotePlayerLike {
   readonly playerId: string;
   load(): Promise<void>;
   pushSnapshot(snap: AvatarSnapshot, receivedAt: number): void;
   update(deltaTime: number, renderTime: number): void;
+  /** Play a one-shot action animation (e.g. the chop swing on a confirmed harvest). */
+  playAction(action: RemoteAction): void;
   dispose(): void;
 }
 
@@ -74,6 +79,16 @@ export class RemotePlayerManager {
 
   has(playerId: string): boolean {
     return this.remotes.has(playerId);
+  }
+
+  /**
+   * Play a one-shot action on a specific remote (e.g. the chop swing, triggered by a
+   * confirmed harvest event carrying that player's id). No-op for our own id (the local
+   * avatar animates itself) or an unknown peer.
+   */
+  playAction(playerId: string, action: RemoteAction): void {
+    if (playerId === this.localPlayerId) return;
+    this.remotes.get(playerId)?.playAction(action);
   }
 
   /** Drop (and dispose) every remote not in `keep` — used to reconcile presence on reconnect. */

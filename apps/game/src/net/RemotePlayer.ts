@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import { Player } from '../player.js';
 import { InterpolationBuffer } from './interpolation.js';
 import type { PlayerModelId } from '../playerModel.js';
+import type { RemoteAction } from './RemotePlayerManager.js';
 import type { AvatarSnapshot, MovementState } from '@cozy/shared';
+
+/** Resolves a held-item id to an inventory-style stack the Player can render. */
+export type HeldItemResolver = (itemId: string) => unknown;
 
 // A remote avatar. Reuses Player for the model, skeleton and animation mixer; the
 // ONLY thing it replaces is the movement source — instead of a CharacterController
@@ -32,17 +36,27 @@ export class RemotePlayer {
   private readonly player: Player;
   private readonly modelId?: PlayerModelId;
   private readonly displayName: string;
+  private readonly resolveHeldItem?: HeldItemResolver;
   private readonly buffer = new InterpolationBuffer();
   private lastMovement: MovementState | null = null;
+  // undefined = nothing applied yet (so the first sample always equips/clears once).
+  private lastHeldItemId: string | null | undefined = undefined;
   private label: THREE.Sprite | null = null;
   /** World-units offset from the avatar's origin to the label, measured after load. */
   private labelOffsetY = LABEL_WORLD_HEIGHT;
 
-  constructor(scene: THREE.Scene, playerId: string, modelId?: PlayerModelId, displayName = '') {
+  constructor(
+    scene: THREE.Scene,
+    playerId: string,
+    modelId?: PlayerModelId,
+    displayName = '',
+    resolveHeldItem?: HeldItemResolver
+  ) {
     this.playerId = playerId;
     this.scene = scene;
     this.modelId = modelId;
     this.displayName = displayName;
+    this.resolveHeldItem = resolveHeldItem;
     this.player = new Player(scene);
   }
 
@@ -78,10 +92,33 @@ export class RemotePlayer {
     if (this.label) {
       this.label.position.set(mesh.position.x, mesh.position.y + this.labelOffsetY, mesh.position.z);
     }
-    if (s.movement !== this.lastMovement) {
+
+    // Mirror the peer's held item (axe, apple, ...). updateHeldItem clears on a falsy
+    // stack, so heldItemId -> null unequips. Only applied on change.
+    if (s.heldItemId !== this.lastHeldItemId) {
+      this.lastHeldItemId = s.heldItemId;
+      const stack = s.heldItemId ? (this.resolveHeldItem?.(s.heldItemId) ?? null) : null;
+      this.player.updateHeldItem(stack);
+    }
+
+    // Keep the locomotion flags in sync with the sampled movement so that when a one-shot
+    // swing finishes, playAxeHitAnimation resumes the RIGHT clip (it reads isMoving /
+    // moveIntensity) instead of snapping to idle while the peer is actually walking.
+    this.player.isMoving = s.movement !== 'idle';
+    this.player.moveIntensity = s.movement === 'running' ? 1 : s.movement === 'walking' ? 0.5 : 0;
+
+    // Drive locomotion from movement changes — but NOT while a swing is locked, or we'd
+    // stomp the chop animation every frame. lastMovement stays stale during the lock, so
+    // the correct clip is re-applied on the first frame after the swing releases.
+    if (!this.player.isPlayingAxeAnimation && s.movement !== this.lastMovement) {
       this.lastMovement = s.movement;
       this.player.playAnimation(MOVEMENT_ANIMATION[s.movement] ?? 'Player_Idle', true);
     }
+  }
+
+  /** Play a one-shot action relayed from a confirmed event (e.g. the chop swing). */
+  playAction(action: RemoteAction): void {
+    if (action === 'axe_hit') this.player.playAxeHitAnimation();
   }
 
   /** Build the name-tag Sprite and add it to the scene above the model's head. */

@@ -25,6 +25,7 @@ class FakeRemote implements RemotePlayerLike {
     this.pushed.push(snap);
   }
   update(): void {}
+  playAction(): void {}
   dispose(): void {
     this.disposed = true;
   }

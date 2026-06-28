@@ -70,6 +70,29 @@ describe('ClientWorld', () => {
     expect(calls.damaged).toEqual([{ id: 5, health: 4, animate: true }]);
   });
 
+  it('passes byPlayerId (and animate) to the node handlers so the harvester can animate', () => {
+    let dmg: { by: string; animate: boolean } | null = null;
+    let dep: { by: string; animate: boolean } | null = null;
+    const w = new ClientWorld({
+      onNodeDamaged: (_id, _kind, _health, animate, byPlayerId) => (dmg = { by: byPlayerId, animate }),
+      onNodeDepleted: (_id, _kind, byPlayerId, animate) => (dep = { by: byPlayerId, animate }),
+    });
+    w.applyDiff(damaged(5, 4)); // live
+    w.applyDiff(depleted(6)); // live
+    expect(dmg).toEqual({ by: 'p1', animate: true });
+    expect(dep).toEqual({ by: 'p1', animate: true });
+  });
+
+  it('marks depletion non-animated during snapshot replay (no swing for unseen hits)', () => {
+    let dep: { by: string; animate: boolean } | null = null;
+    const w = new ClientWorld({
+      onNodeDepleted: (_id, _kind, byPlayerId, animate) => (dep = { by: byPlayerId, animate }),
+    });
+    const snapshot = { diffs: [depleted(7)] } as unknown as WorldSnapshot;
+    w.loadSnapshot(snapshot);
+    expect(dep).toEqual({ by: 'p1', animate: false });
+  });
+
   it('does not re-fire onNodeDamaged for a stale/replayed hit (monotonic)', () => {
     const { calls, handlers } = spy();
     const w = new ClientWorld(handlers);
