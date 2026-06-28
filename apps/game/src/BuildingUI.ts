@@ -563,7 +563,7 @@ export class BuildingUI {
     // Add keyboard handlers for selection screen
     this.selectionScreenKeyHandler = (event: KeyboardEvent) => {
       if (event.code === 'Escape') {
-        this.hideSelectionScreen();
+        this.buildingSystem.exitBuildingMode();
       }
     };
     document.addEventListener('keydown', this.selectionScreenKeyHandler);
@@ -572,7 +572,7 @@ export class BuildingUI {
     closeButton?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.hideSelectionScreen();
+      this.buildingSystem.exitBuildingMode();
     });
 
     // Add click handlers to object cards

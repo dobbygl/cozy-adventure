@@ -1250,7 +1250,7 @@ updateLevelReferences() {
     // Add keyboard handlers for selection screen
     this.selectionScreenKeyHandler = (event) => {
       if (event.code === 'Escape') {
-        this.hideSelectionScreen();
+        this.exitBuildingMode();
       }
     };
     document.addEventListener('keydown', this.selectionScreenKeyHandler);
@@ -1259,7 +1259,7 @@ updateLevelReferences() {
     closeButton?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.hideSelectionScreen();
+      this.exitBuildingMode();
     });
     
     // Add click handlers to object cards
