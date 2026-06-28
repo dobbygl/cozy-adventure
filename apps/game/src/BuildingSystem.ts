@@ -498,8 +498,9 @@ updateLevelReferences() {
         
         // Check physical mesh intersection
         const hasPhysicalConflicts = this.checkPhysicalIntersection(gridPos, this.currentRotation);
+        const overlapsPlayer = this.checkPlayerFootprintIntersection(gridPos, this.currentRotation);
         
-        const isInvalid = hasCellConflicts || hasPhysicalConflicts;
+        const isInvalid = hasCellConflicts || hasPhysicalConflicts || overlapsPlayer;
         
         // Debug logging for placement validation (reduced frequency)
         if (Math.random() < 0.1) { // Log only 10% of the time to reduce spam
@@ -508,6 +509,7 @@ updateLevelReferences() {
             console.log(`  Position: (${gridPos.x}, ${gridPos.z}), Rotation: ${(this.currentRotation * 180 / Math.PI).toFixed(0)}°`);
             if (hasCellConflicts) console.log(`  Cell conflicts:`, cellConflicts);
             if (hasPhysicalConflicts) console.log(`  Physical mesh intersection detected`);
+            if (overlapsPlayer) console.log(`  Player footprint intersection detected`);
           }
         }
         
@@ -827,9 +829,10 @@ updateLevelReferences() {
     
     // 2. Check cell conflicts only - walls can touch each other
     const hasPhysicalConflicts = this.checkPhysicalIntersection(buildPosition, this.currentRotation);
+    const overlapsPlayer = this.checkPlayerFootprintIntersection(buildPosition, this.currentRotation);
     const hasCellConflicts = conflictingCells.length > 0;
     
-    if (hasCellConflicts || hasPhysicalConflicts) {
+    if (hasCellConflicts || hasPhysicalConflicts || overlapsPlayer) {
       console.log('❌ Cannot build here - conflicts detected:');
       console.log('  Build position:', buildPosition);
       console.log('  Current rotation (degrees):', (this.currentRotation * 180 / Math.PI));
@@ -841,6 +844,10 @@ updateLevelReferences() {
       
       if (hasPhysicalConflicts) {
         console.log('  🔲 Cell occupation conflicts detected');
+      }
+      
+      if (overlapsPlayer) {
+        console.log('  🧍 Player footprint conflict detected');
       }
       
       return;
@@ -1887,7 +1894,6 @@ updateLevelReferences() {
   checkPhysicalIntersection(position: THREE.Vector3, rotation: number) {
     // Check if the cells this object would occupy conflict with existing objects on current level only
     const newObjectCells = this.getOccupiedCells(position, rotation);
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
     
     // Check each cell this object would occupy against current level's occupied cells
     for (const newCellKey of newObjectCells) {
@@ -1898,6 +1904,33 @@ updateLevelReferences() {
     }
     
     return false;
+  }
+
+  checkPlayerFootprintIntersection(position: THREE.Vector3, rotation: number) {
+    const playerMesh = this.player?.mesh;
+    if (!playerMesh) return false;
+
+    // Only block on the active build level. This prevents a mobile centre-screen
+    // placement from dropping a large floor/foundation through the local player and
+    // swallowing the camera, while still allowing future vertical building work on
+    // other levels.
+    const playerPosition = playerMesh.position;
+    const currentLevelY = this.getCurrentLevelY();
+    if (Math.abs(playerPosition.y - currentLevelY) > this.gridSize * 1.5) return false;
+
+    const gridX = Math.round((playerPosition.x + 0.001) / this.gridSize);
+    const gridZ = Math.round((playerPosition.z + 0.001) / this.gridSize);
+    const blockedPlayerCells = new Set<string>();
+
+    // Block the player's cell plus adjacent cells. Floors are multi-cell objects;
+    // the small buffer gives the character/camera room and avoids near-edge clips.
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        blockedPlayerCells.add(`${gridX + dx},${gridZ + dz}`);
+      }
+    }
+
+    return this.getOccupiedCells(position, rotation).some((cellKey) => blockedPlayerCells.has(cellKey));
   }
   
   playPlacementAnimation(wall: THREE.Object3D) {
