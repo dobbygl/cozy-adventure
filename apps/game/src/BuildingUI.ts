@@ -317,12 +317,100 @@ export class BuildingUI {
     }
   }
 
+  ensureSelectionScreenStyles(): void {
+    if (document.getElementById('building-selection-responsive-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'building-selection-responsive-styles';
+    style.textContent = `
+      #selectionScreen {
+        width: min(320px, calc(100vw - 40px)) !important;
+        max-height: calc(100dvh - 40px) !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .selection-header {
+        position: relative;
+        padding-right: 48px;
+      }
+      .selection-close {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 2px solid rgba(245, 222, 179, 0.85);
+        background: rgba(60, 31, 12, 0.55);
+        color: #F5DEB3;
+        font: 800 28px/1 system-ui, sans-serif;
+        cursor: pointer;
+        pointer-events: auto;
+        touch-action: manipulation;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      }
+      .selection-close:active {
+        transform: scale(0.96);
+        background: rgba(60, 31, 12, 0.78);
+      }
+      @media (max-width: 820px) and (orientation: landscape) {
+        #selectionScreen {
+          top: max(10px, env(safe-area-inset-top)) !important;
+          right: max(10px, env(safe-area-inset-right)) !important;
+          bottom: max(10px, env(safe-area-inset-bottom)) !important;
+          transform: none !important;
+          width: min(34vw, 280px) !important;
+          min-width: 220px !important;
+          max-height: calc(100dvh - 20px) !important;
+          padding: 12px !important;
+          border-radius: 18px !important;
+        }
+        #selectionScreen .selection-header {
+          margin-bottom: 12px !important;
+          padding-right: 40px;
+        }
+        #selectionScreen .selection-header h3 {
+          font-size: 18px !important;
+          margin-bottom: 2px !important;
+        }
+        #selectionScreen .selection-header p {
+          font-size: 12px !important;
+        }
+        #selectionScreen #objectList {
+          gap: 8px !important;
+        }
+        #selectionScreen .object-card {
+          padding: 10px !important;
+          border-radius: 14px !important;
+        }
+        #selectionScreen .object-card [id^="preview-"] {
+          width: 42px !important;
+          height: 42px !important;
+          border-radius: 12px !important;
+        }
+        #selectionScreen .selection-footer {
+          margin-top: 10px !important;
+          padding-top: 10px !important;
+        }
+        #buildingText {
+          bottom: 82px !important;
+          padding: 10px 16px !important;
+          max-width: 42vw !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   showSelectionScreen(): void {
+    this.ensureSelectionScreenStyles();
+
     // Create or show selection sidebar
     let selectionScreen = document.getElementById('selectionScreen');
     if (!selectionScreen) {
       selectionScreen = document.createElement('div');
       selectionScreen.id = 'selectionScreen';
+      selectionScreen.className = 'selection-screen';
       selectionScreen.style.cssText = `
         position: fixed;
         top: 50%;
@@ -350,7 +438,8 @@ export class BuildingUI {
 
     // Create selection content
     selectionScreen.innerHTML = `
-      <div style="text-align: center; margin-bottom: 25px;">
+      <div class="selection-header" style="text-align: center; margin-bottom: 25px;">
+        <button class="selection-close" type="button" aria-label="Close build menu">×</button>
         <h3 style="
           color: #F5DEB3;
           font-family: 'Fredoka One', Arial, sans-serif;
@@ -458,7 +547,7 @@ export class BuildingUI {
           .join('')}
       </div>
 
-      <div style="
+      <div class="selection-footer" style="
         text-align: center;
         color: #DEB887;
         font-size: 12px;
@@ -478,6 +567,13 @@ export class BuildingUI {
       }
     };
     document.addEventListener('keydown', this.selectionScreenKeyHandler);
+
+    const closeButton = selectionScreen.querySelector<HTMLElement>('.selection-close');
+    closeButton?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.hideSelectionScreen();
+    });
 
     // Add click handlers to object cards
     const objectCards = selectionScreen.querySelectorAll<HTMLElement>('.object-card');

@@ -74,6 +74,11 @@ export class TouchControls {
     this.buildPanel.appendChild(
       this.makeButton('touch-build-action', 'Centrar', () => this.buildHandlers.onCenter?.())
     );
+    this.buildPanel.appendChild(
+      this.makeButton('touch-build-action touch-build-close', 'Cerrar', () =>
+        this.buildHandlers.onToggle?.()
+      )
+    );
     this.root.appendChild(this.buildPanel);
 
     // Always-available action buttons so nothing is keyboard-only on touch:
@@ -210,7 +215,10 @@ export class TouchControls {
         transform: translateX(-50%);
         display: none;
         flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
         gap: 10px;
+        width: min(94vw, 440px);
       }
       .touch-build-action {
         min-width: 88px;
@@ -225,6 +233,10 @@ export class TouchControls {
       }
       .touch-build-action:active {
         background: rgba(0, 0, 0, 0.65);
+      }
+      .touch-build-close {
+        background: rgba(139, 69, 19, 0.72);
+        border-color: rgba(245, 222, 179, 0.75);
       }
       .touch-jump-btn {
         position: absolute;
@@ -266,6 +278,25 @@ export class TouchControls {
       body.input-touch .slot-number,
       body.input-touch .kbd-hint {
         display: none !important;
+      }
+      @media (max-width: 820px) and (orientation: landscape) {
+        .touch-build-panel {
+          bottom: max(18px, env(safe-area-inset-bottom));
+          left: 50%;
+          width: min(58vw, 380px);
+          gap: 8px;
+        }
+        .touch-build-action {
+          min-width: 78px;
+          min-height: 44px;
+          font-size: 14px;
+          border-radius: 10px;
+        }
+        .touch-jump-btn {
+          width: 58px;
+          height: 58px;
+          bottom: max(14px, env(safe-area-inset-bottom));
+        }
       }
     `;
     document.head.appendChild(this.styleEl);
