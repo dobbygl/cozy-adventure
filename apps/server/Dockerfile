@@ -3,8 +3,9 @@
 # workspace): build with `docker build -f apps/server/Dockerfile .` or via the
 # docker-compose.yml (which sets context: ../..).
 
-# --- builder: install workspace deps and bundle the server ---
-FROM node:20-slim AS builder
+# --- builder: install workspace deps, bundle the server, and stage a
+#     self-contained prod deployment with `pnpm deploy` ---
+FROM node:24-slim AS builder
 RUN corepack enable
 WORKDIR /repo
 # Manifests first (layer caching). All workspace manifests are copied so pnpm can
@@ -18,14 +19,22 @@ RUN pnpm install --frozen-lockfile --filter @cozy/server...
 COPY packages/shared ./packages/shared
 COPY apps/server ./apps/server
 RUN pnpm --filter @cozy/server build
+# Stage a self-contained prod deployment resolved from pnpm-lock.yaml: dist plus a
+# portable node_modules. tsup inlines @cozy/shared + zod into dist, so the only
+# deps actually loaded at runtime are the externalized pg/pino/ws (shared and zod
+# ride along unused). `--legacy` is required since pnpm 10 for non-injected
+# workspaces; it keeps a single resolver and source of truth (no second manifest).
+RUN pnpm --filter @cozy/server --legacy deploy --prod /deploy
 
-# --- runtime: minimal image with only the externalized runtime deps ---
-FROM node:20-slim AS runtime
+# --- runtime: minimal, non-root image with only the deployed artifact ---
+FROM node:24-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# tsup inlines @cozy/shared and our code; only pg/pino/ws stay external.
-COPY apps/server/package.runtime.json ./package.json
-RUN npm install --omit=dev --no-package-lock && npm cache clean --force
-COPY --from=builder /repo/apps/server/dist ./dist
+# Copy only what runs: the ESM marker (package.json "type": "module"), the
+# portable node_modules and the bundle. Owned by the unprivileged `node` user.
+COPY --from=builder --chown=node:node /deploy/package.json ./package.json
+COPY --from=builder --chown=node:node /deploy/node_modules ./node_modules
+COPY --from=builder --chown=node:node /deploy/dist ./dist
+USER node
 EXPOSE 8080
 CMD ["node", "dist/index.js"]
