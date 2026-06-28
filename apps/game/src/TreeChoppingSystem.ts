@@ -24,6 +24,12 @@ export class TreeChoppingSystem {
   hitEffects: { particles: THREE.Group; startTime: number }[];
   mouseIndicator: HTMLElement | null;
   hoveredTree: THREE.Object3D | null;
+  /**
+   * In multiplayer, Game sets this to send a chop_tree command. When present, a chop
+   * is server-authoritative: emit the command and let the confirmed event remove the
+   * tree, instead of running the local health/destroy path. Null = local mode.
+   */
+  requestChop: ((networkId: number) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -241,7 +247,21 @@ export class TreeChoppingSystem {
       console.log('❌ Tree is already being destroyed, canceling chop');
       return; // Don't allow chopping trees that are falling
     }
-    
+
+    // Multiplayer: chopping is server-authoritative. Emit a chop_tree command and let
+    // the confirmed tree_chopped event remove the tree (apply-on-confirm), instead of
+    // the local health/destroy path. Mark it so repeat clicks don't spam the command
+    // (the server also dedupes); a quick hit animation gives immediate feedback.
+    if (this.requestChop) {
+      const networkId = treeMesh.userData?.networkId;
+      if (typeof networkId === 'number') {
+        treeMesh.userData.isBeingDestroyed = true;
+        this.playTreeHitAnimation(treeMesh);
+        this.requestChop(networkId);
+        return;
+      }
+    }
+
     // Initialize tree health if not tracked yet
     if (!this.treeHealth.has(treeMesh)) {
       this.treeHealth.set(treeMesh, this.maxTreeHealth);

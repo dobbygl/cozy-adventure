@@ -156,6 +156,11 @@ export class Game {
         config: { url: multiplayer.url, password: multiplayer.password, modelId: getSelectedPlayerModel() },
         remoteFactory: (peer) => new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId)),
         now: () => performance.now(),
+        // Confirmed world diffs -> scene changes. Closures read the systems at call
+        // time (they exist by begin(), after the world is built).
+        worldHandlers: {
+          onTreeChopped: (networkId) => this.environment?.removeTreeByNetworkId(networkId),
+        },
       });
       await this.network.connect();
     }
@@ -894,7 +899,14 @@ addSampleItemsToInventory() {
     if (this.player) {
       this.treeChoppingSystem.setPlayer(this.player);
     }
-    
+
+    // Multiplayer: route chops through the server (apply-on-confirm). In local mode
+    // requestChop stays null and chopping keeps its existing client-side behavior.
+    if (this.network) {
+      this.treeChoppingSystem.requestChop = (networkId) =>
+        this.network?.sendCommand({ type: 'chop_tree', networkId });
+    }
+
     console.log('Tree chopping system initialized with player reference and item drop system');
   }
   

@@ -339,6 +339,33 @@ export class Environment {
       return null;
     }
   }
+  /**
+   * Remove a tree (and its collider) by its stable networkId. This is the network
+   * path for a confirmed chop_tree: the server arbitrates the chop and every client
+   * removes the same tree by id. Mirrors TreeChoppingSystem's local removal.
+   */
+  removeTreeByNetworkId(networkId: number): void {
+    const tree = this.loadedTrees?.find((t) => t.mesh.userData.networkId === networkId);
+    if (!tree) return;
+    const mesh = tree.mesh;
+    mesh.userData.isBeingDestroyed = true;
+    this.scene.remove(mesh);
+    this.loadedTrees = this.loadedTrees.filter((t) => t !== tree);
+    // Record the string id too, so a later regeneration from the seed still excludes it.
+    if (mesh.userData.treeId) this.choppedTreeIds.add(mesh.userData.treeId);
+    // Remove the associated invisible collider (same match as the local chop path).
+    const colliders: THREE.Object3D[] = [];
+    this.scene.traverse((child) => {
+      if (child.name?.includes('treeCollider') && child.userData.associatedTree === mesh) {
+        colliders.push(child);
+      }
+    });
+    for (const collider of colliders) {
+      this.scene.remove(collider);
+      this.collisionSystem?.removeCollider(collider);
+    }
+  }
+
   createAllTreeColliders() {
     if (!this.collisionSystem) {
       console.warn('No collision system available for tree colliders');
