@@ -68,7 +68,7 @@ export class Game {
   loadingScreen: LoadingScreen | null;
   /** Active multiplayer session, or null in single-player (local) mode. */
   network: NetworkSession | null;
-  /** 'local' (offline, cookies, pause-on-hide) or 'network' (live, keepalive, no freeze). */
+  /** 'local' (offline, localStorage saves, pause-on-hide) or 'network' (live, keepalive, no freeze). */
   sessionMode: 'local' | 'network';
   /** Set when the server kicks us (replaced/timeout/shutdown), to suppress auto-reconnect. */
   networkKicked: boolean;
@@ -313,7 +313,7 @@ export class Game {
     
     console.log('Game world fully initialized and ready to play!');
     
-    // Local mode persists to cookies; network mode is server-authoritative, so skip
+    // Local mode persists to localStorage; network mode is server-authoritative, so skip
     // the local autosave timer and keep the Quick Save button hidden entirely.
     if (this.sessionMode === 'local') {
       // Enable auto-save after game is fully initialized

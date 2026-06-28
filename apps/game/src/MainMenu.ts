@@ -724,7 +724,7 @@ export class MainMenu {
       mpFields.style.display = open ? 'none' : 'block';
       mpToggle.setAttribute('aria-expanded', String(!open));
     });
-    // Pre-fill the last server used (best-effort: storage may be partitioned in the host iframe).
+    // Pre-fill the last server used (best-effort; localStorage may be unavailable, e.g. private mode).
     try {
       const last = localStorage.getItem('cozy:lastServer');
       if (last) (this.qs('#mp-url') as HTMLInputElement).value = last;
