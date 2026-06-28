@@ -23,7 +23,9 @@ export async function startTestServer(
   env: NodeJS.ProcessEnv = {},
   store: Store = new MemoryStore()
 ): Promise<TestServer> {
-  const config = loadConfig({ PORT: '0', ...env });
+  // Fixed AUTH_SECRET by default so reconnect tokens stay valid across an in-process
+  // server restart (e.g. the persistence test); a test can still override it via env.
+  const config = loadConfig({ PORT: '0', AUTH_SECRET: 'test-auth-secret', ...env });
   const metrics = new Metrics();
   const transport = new WebSocketTransport(config, metrics, logger);
   const sessions = new SessionManager();

@@ -11,6 +11,7 @@ import { World } from './world/World';
 import type { AuthProvider } from './auth/AuthProvider';
 import { NullAuthProvider } from './auth/NullAuthProvider';
 import { PasswordAuthProvider } from './auth/PasswordAuthProvider';
+import { issueToken, verifyToken } from './auth/identity';
 import { createDefaultPlayer } from './player';
 import { validateAvatarMove } from './session/avatarRelay';
 import { applyCommand } from './world/commands';
@@ -215,17 +216,29 @@ export class GameServer {
     try {
       raw = JSON.parse(data);
     } catch {
-      this.sendError(conn, 'bad_message', 'invalid JSON');
+      this.onInvalidMessage(session, 'invalid JSON');
       return;
     }
 
     const msg = parseClientMessage(raw);
     if (!msg) {
-      this.sendError(conn, 'bad_message', 'unrecognized or malformed message');
+      this.onInvalidMessage(session, 'unrecognized or malformed message');
       return;
     }
 
     this.route(session, msg);
+  }
+
+  /**
+   * A malformed message. Report it, and after enough of them close the connection:
+   * a legitimate client never sends junk, so a stream of it is abuse (DoS guard).
+   */
+  private onInvalidMessage(session: Session, message: string): void {
+    this.sendError(session.conn, 'bad_message', message);
+    if (++session.invalidMessages >= this.config.maxInvalidMessages) {
+      this.logger.warn({ playerId: session.playerId }, 'closing connection: too many invalid messages');
+      session.conn.close();
+    }
   }
 
   private route(session: Session, msg: ClientMessage): void {
@@ -294,7 +307,23 @@ export class GameServer {
       session.conn.close();
       return;
     }
-    const playerId = msg.playerId ?? randomUUID();
+    // Identity: a playerId may only be claimed by presenting its token. A peer can
+    // see every playerId (PeerInfo broadcasts it), so the playerId is not a secret —
+    // the token is. Without it, a forged playerId would let anyone kick the owner and
+    // load their persisted inventory. No playerId => a fresh, server-issued identity.
+    let playerId: string;
+    if (msg.playerId) {
+      if (!msg.token || !verifyToken(msg.playerId, msg.token, this.config.authSecret)) {
+        this.logger.warn({ playerId: msg.playerId }, 'rejected join: invalid identity token');
+        this.sendError(session.conn, 'auth', 'invalid or missing identity token');
+        session.conn.close();
+        return;
+      }
+      playerId = msg.playerId;
+    } else {
+      playerId = randomUUID();
+    }
+    const token = issueToken(playerId, this.config.authSecret);
 
     // Double connection: a still-active session owns this playerId (e.g. a second
     // tab). The new connection wins; the old one is kicked.
@@ -347,6 +376,7 @@ export class GameServer {
     session.send({
       t: 'joined',
       playerId,
+      token,
       worldId: this.world.worldId,
       protocolVersion: PROTOCOL_VERSION,
       seed: this.world.seed,

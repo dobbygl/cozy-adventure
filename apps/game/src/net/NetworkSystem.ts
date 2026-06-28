@@ -47,6 +47,8 @@ export interface NetworkConfig {
   url: string;
   password?: string;
   playerId?: string;
+  /** Reconnect token paired with playerId; required by the server to claim that id. */
+  token?: string;
   displayName?: string;
   modelId?: string;
   /** Avatar send rate (Hz). Default 15. */
@@ -57,6 +59,8 @@ export interface NetworkConfig {
 
 export interface JoinResult {
   playerId: string;
+  /** Token to persist and resend (with playerId) to recover this identity later. */
+  token: string;
   worldId: string;
   seed: number;
   world: WorldSnapshot;
@@ -112,6 +116,7 @@ export class NetworkSystem {
             protocolVersion: PROTOCOL_VERSION,
             ...(this.config.password ? { password: this.config.password } : {}),
             ...(this.config.playerId ? { playerId: this.config.playerId } : {}),
+            ...(this.config.token ? { token: this.config.token } : {}),
             ...(this.config.displayName ? { displayName: this.config.displayName } : {}),
             ...(this.config.modelId ? { modelId: this.config.modelId } : {}),
           };
@@ -133,6 +138,7 @@ export class NetworkSystem {
               this.startLoops();
               resolve({
                 playerId: msg.playerId,
+                token: msg.token,
                 worldId: msg.worldId,
                 seed: msg.seed,
                 world: msg.world,

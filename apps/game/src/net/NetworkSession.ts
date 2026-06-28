@@ -58,6 +58,7 @@ export class NetworkSession {
   private readonly now: () => number;
   private remotes: RemotePlayerManager | null = null;
   private localPlayerId = '';
+  private localToken = '';
   private worldSeed = 0;
   // Materialization is deferred until begin(): connect() can run before the scene
   // exists (so a bad URL fails before anything is built). Peers and world diffs that
@@ -108,6 +109,7 @@ export class NetworkSession {
   async connect(timeoutMs?: number): Promise<JoinResult> {
     const joined = await this.net.connect(timeoutMs);
     this.localPlayerId = joined.playerId;
+    this.localToken = joined.token;
     this.worldSeed = joined.seed;
     this.remotes = new RemotePlayerManager(joined.playerId, this.remoteFactory);
     this.pendingPeers = [...joined.peers];
@@ -142,9 +144,14 @@ export class NetworkSession {
    */
   async reconnect(timeoutMs?: number): Promise<JoinResult> {
     this.net.destroy();
-    this.net = new NetworkSystem({ ...this.config, playerId: this.localPlayerId }, this.netHandlers);
+    // Resend playerId + token so the server lets us reclaim our identity in place.
+    this.net = new NetworkSystem(
+      { ...this.config, playerId: this.localPlayerId, token: this.localToken },
+      this.netHandlers
+    );
     const joined = await this.net.connect(timeoutMs);
     this.localPlayerId = joined.playerId;
+    this.localToken = joined.token;
     this.worldSeed = joined.seed;
     this.remotes ??= new RemotePlayerManager(joined.playerId, this.remoteFactory);
     if (this.started) {
@@ -175,6 +182,11 @@ export class NetworkSession {
 
   get playerId(): string {
     return this.localPlayerId;
+  }
+
+  /** The server-issued reconnect token for this identity (persist it client-side). */
+  get token(): string {
+    return this.localToken;
   }
 
   get isConnected(): boolean {

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { type PlayerModelId, DEFAULT_PLAYER_MODEL, setSelectedPlayerModel } from './playerModel.js';
+import { getPlayerName, setPlayerName } from './playerName.js';
+import { MAX_DISPLAY_NAME_LENGTH } from '@cozy/shared';
 
 export class MainMenu {
   // gameInstance is the Game (game.js, not yet migrated); typed loosely.
@@ -60,6 +62,10 @@ export class MainMenu {
               <span class="char-name">Female</span>
             </button>
           </div>
+          <label class="char-label" for="player-name" style="margin-top:14px;">Name</label>
+          <input class="mp-input" id="player-name" type="text" autocomplete="off" maxlength="${MAX_DISPLAY_NAME_LENGTH}"
+            placeholder="Your name (shown to other players)"
+            style="width:100%;box-sizing:border-box;margin-top:6px;padding:12px 14px;border:3px solid #CD853F;border-radius:14px;background:#FFF8E7;color:#5b3a1a;font-family:'Nunito',sans-serif;font-size:1rem;" />
         </div>
 
         <div class="menu-buttons">
@@ -814,6 +820,16 @@ export class MainMenu {
     }
     this.qs('#mp-join').addEventListener('click', () => {
       void this.joinMultiplayer();
+    });
+
+    // Player name: persisted in localStorage and sent on multiplayer join, where it
+    // labels this player's avatar for peers. Sanitized on the way in and out.
+    const nameInput = this.qs('#player-name') as HTMLInputElement;
+    nameInput.maxLength = MAX_DISPLAY_NAME_LENGTH;
+    nameInput.value = getPlayerName();
+    nameInput.addEventListener('input', () => setPlayerName(nameInput.value));
+    nameInput.addEventListener('blur', () => {
+      nameInput.value = setPlayerName(nameInput.value); // reflect the canonical clamp
     });
 
     // Character selector (only affects a NEW game; loaded saves keep their model)

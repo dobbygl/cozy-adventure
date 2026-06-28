@@ -5,3 +5,4 @@ export * from './protocol';
 export * from './state';
 export * from './worldState';
 export * from './resourceNodes';
+export * from './displayName';

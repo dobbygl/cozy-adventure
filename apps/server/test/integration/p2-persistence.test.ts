@@ -12,7 +12,7 @@ describe('P2 persistence', () => {
     // --- session 1: mutate the world, then shut down (persists) ---
     const ctxA = await startTestServer({}, store);
     const { c: a, joined: ja } = await joinClient(ctxA.url);
-    const { playerId, seed } = ja;
+    const { playerId, token, seed } = ja;
 
     // Fell a tree over its full health, summing the per-hit wood grants.
     const hits = RESOURCE_NODES.tree.maxHealth;
@@ -37,7 +37,7 @@ describe('P2 persistence', () => {
 
     // --- session 2: fresh server, same store ---
     const ctxB = await startTestServer({}, store);
-    const { c: b, joined: jb } = await joinClient(ctxB.url, { playerId });
+    const { c: b, joined: jb } = await joinClient(ctxB.url, { playerId, token });
 
     expect(jb.seed).toBe(seed);
     // The felled tree's depletion survived the restart.

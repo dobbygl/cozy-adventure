@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Server configuration, parsed and validated from the environment.
@@ -18,6 +19,15 @@ const EnvSchema = z.object({
   RECONNECT_WINDOW_MS: z.coerce.number().int().nonnegative().default(30_000),
   KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   LOG_LEVEL: z.string().default('info'),
+  // Secret used to mint per-player reconnect tokens (HMAC). Empty => a random
+  // secret is generated per boot, so identities last only the process lifetime;
+  // set a stable value in production for identity to survive restarts.
+  AUTH_SECRET: z.string().default(''),
+  // DoS guards (Transport + message loop). Generous enough that no legitimate
+  // client trips them; tight enough that a flood/oversize-frame attacker is cut off.
+  MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(64 * 1024),
+  MAX_MESSAGES_PER_SEC: z.coerce.number().int().positive().default(120),
+  MAX_INVALID_MESSAGES: z.coerce.number().int().positive().default(8),
 });
 
 export interface Config {
@@ -36,6 +46,14 @@ export interface Config {
   reconnectWindowMs: number;
   keepaliveTimeoutMs: number;
   logLevel: string;
+  /** HMAC secret for reconnect tokens (random per boot when AUTH_SECRET is unset). */
+  authSecret: string;
+  /** Max inbound WebSocket frame size (bytes); larger frames close the connection. */
+  maxPayloadBytes: number;
+  /** Max inbound messages per second per connection before it is dropped. */
+  maxMessagesPerSec: number;
+  /** Max malformed messages a connection may send before it is dropped. */
+  maxInvalidMessages: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -58,5 +76,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     reconnectWindowMs: e.RECONNECT_WINDOW_MS,
     keepaliveTimeoutMs: e.KEEPALIVE_TIMEOUT_MS,
     logLevel: e.LOG_LEVEL,
+    authSecret: e.AUTH_SECRET.length > 0 ? e.AUTH_SECRET : randomUUID(),
+    maxPayloadBytes: e.MAX_PAYLOAD_BYTES,
+    maxMessagesPerSec: e.MAX_MESSAGES_PER_SEC,
+    maxInvalidMessages: e.MAX_INVALID_MESSAGES,
   };
 }

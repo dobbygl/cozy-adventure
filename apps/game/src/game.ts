@@ -24,6 +24,8 @@ import { TouchControls } from './input/TouchControls.js';
 import { NetworkSession } from './net/NetworkSession.js';
 import { RemotePlayer } from './net/RemotePlayer.js';
 import { getSelectedPlayerModel, type PlayerModelId } from './playerModel.js';
+import { getPlayerName } from './playerName.js';
+import { getStoredIdentity, setStoredIdentity } from './playerIdentity.js';
 
 /** Narrow a peer's model id string to a known PlayerModelId, or undefined (use default). */
 function coerceModelId(id?: string): PlayerModelId | undefined {
@@ -155,9 +157,21 @@ export class Game {
     // factory (which does) is only used later, in begin(), once the scene exists.
     if (multiplayer) {
       this.sessionMode = 'network';
+      // Identity: present our stored { playerId, token } so the server lets us reclaim
+      // our persisted character; on first ever join we send neither and it mints them.
+      // displayName is our chosen name (empty => server falls back to a generated one).
+      const identity = getStoredIdentity();
       this.network = new NetworkSession({
-        config: { url: multiplayer.url, password: multiplayer.password, modelId: getSelectedPlayerModel() },
-        remoteFactory: (peer) => new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId)),
+        config: {
+          url: multiplayer.url,
+          password: multiplayer.password,
+          modelId: getSelectedPlayerModel(),
+          displayName: getPlayerName() || undefined,
+          playerId: identity?.playerId,
+          token: identity?.token,
+        },
+        remoteFactory: (peer) =>
+          new RemotePlayer(this.scene!, peer.playerId, coerceModelId(peer.modelId), peer.displayName),
         now: () => performance.now(),
         // Confirmed world diffs -> scene changes. Closures read the systems at call
         // time (they exist by begin(), after the world is built).
@@ -197,7 +211,10 @@ export class Game {
           onError: (code, message) => console.warn(`Network error: ${code} ${message}`),
         },
       });
-      await this.network.connect();
+      const joined = await this.network.connect();
+      // Persist the server-issued identity so a reload/reconnect recovers this same
+      // character (and proves ownership via the token). Safe to overwrite each join.
+      setStoredIdentity(joined.playerId, joined.token);
     }
 
     // Create and show loading screen first

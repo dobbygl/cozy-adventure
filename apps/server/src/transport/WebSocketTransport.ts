@@ -44,7 +44,9 @@ export class WebSocketTransport implements Transport {
 
   async start(handlers: TransportHandlers): Promise<void> {
     const http = createServer((req, res) => this.handleHttp(req, res));
-    const wss = new WebSocketServer({ noServer: true });
+    // maxPayload caps inbound frame size: a larger frame makes ws close the socket
+    // (1009) instead of buffering an attacker-chosen amount of memory (DoS guard).
+    const wss = new WebSocketServer({ noServer: true, maxPayload: this.config.maxPayloadBytes });
 
     http.on('upgrade', (req, socket, head) => {
       const origin = req.headers.origin;
@@ -56,7 +58,21 @@ export class WebSocketTransport implements Transport {
       wss.handleUpgrade(req, socket, head, (ws) => {
         const conn = new WsConnection(randomUUID(), origin, ws);
         handlers.onConnection(conn);
+        // Per-connection message-rate guard: a fixed 1s window. A flood (far more
+        // frames/s than any real client sends) trips it and the socket is closed.
+        let windowStart = Date.now();
+        let inWindow = 0;
         ws.on('message', (data) => {
+          const now = Date.now();
+          if (now - windowStart >= 1000) {
+            windowStart = now;
+            inWindow = 0;
+          }
+          if (++inWindow > this.config.maxMessagesPerSec) {
+            this.logger.warn({ origin }, 'closing ws: message rate limit exceeded');
+            ws.close(1008, 'rate limit');
+            return;
+          }
           this.metrics.incMessagesIn();
           handlers.onMessage(conn, data.toString());
         });

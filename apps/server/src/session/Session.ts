@@ -20,6 +20,8 @@ export class Session {
   lastKeepaliveAt: number;
   /** Last accepted command seq (ordering/idempotency across reconnects). */
   lastSeq = 0;
+  /** Count of malformed messages seen on this connection (DoS guard; close past a cap). */
+  invalidMessages = 0;
   /** Last sanity-validated avatar state, relayed to peers. */
   avatar: AvatarSnapshot | null = null;
   /** Timestamp (ms) when the last avatar state was accepted (for sanity checks). */

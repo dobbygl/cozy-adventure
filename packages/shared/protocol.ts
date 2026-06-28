@@ -18,8 +18,11 @@ import type { ResourceNodeKind } from './resourceNodes';
  * Bumped on any breaking change to the message shapes. Sent in `join`.
  * v2: chop_tree/tree_chopped generalized to the multi-hit harvest_node command +
  * node_damaged/node_depleted diffs (resource nodes now have health).
+ * v3: identity token (join carries an opaque reconnect token, joined returns it;
+ * a playerId may only be claimed with its token), and place_building no longer
+ * carries `cell` — the server derives the footprint cells from position+rotation.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
  * Wire-contract id-space split. Base world entities (the seeded trees) are
@@ -67,8 +70,15 @@ export interface JoinMessage {
   t: 'join';
   protocolVersion: number;
   password?: string;
-  /** Present on reconnect to recover identity within the reconnect window. */
+  /** Present to recover a previously-issued identity. MUST be accompanied by `token`. */
   playerId?: string;
+  /**
+   * Opaque reconnect token, issued by the server in `joined` and stored client-side.
+   * Required whenever `playerId` is sent: a playerId can only be claimed by the holder
+   * of its token, which is what stops a peer (who can see every playerId) from hijacking
+   * another player's persisted identity/inventory.
+   */
+  token?: string;
   displayName?: string;
   modelId?: string;
 }
@@ -114,6 +124,8 @@ export interface PeerInfo {
 export interface JoinedMessage {
   t: 'joined';
   playerId: string;
+  /** Opaque token to store and present (with `playerId`) on the next join/reconnect. */
+  token: string;
   worldId: string;
   protocolVersion: number;
   seed: number;

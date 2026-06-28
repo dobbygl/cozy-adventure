@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RESOURCE_NODE_KINDS, type ClientMessage } from '@cozy/shared';
+import { RESOURCE_NODE_KINDS, MAX_DISPLAY_NAME_LENGTH, type ClientMessage } from '@cozy/shared';
 
 // Runtime validation for everything the server receives. The server trusts
 // nothing: inbound data is `unknown` until it passes these schemas. Kept here
@@ -39,10 +39,14 @@ const worldCommand = z.discriminatedUnion('type', [
 const joinMessage = z.object({
   t: z.literal('join'),
   protocolVersion: z.number().int(),
-  password: z.string().optional(),
-  playerId: z.string().optional(),
-  displayName: z.string().optional(),
-  modelId: z.string().optional(),
+  password: z.string().max(512).optional(),
+  // Bounded so a forged join can't bloat the parse buffer; identity is verified
+  // (token) separately in onJoin, this is only a length guard.
+  playerId: z.string().max(128).optional(),
+  token: z.string().max(256).optional(),
+  // Reject over-long names early; sanitizeDisplayName clamps the rest at creation.
+  displayName: z.string().max(MAX_DISPLAY_NAME_LENGTH).optional(),
+  modelId: z.string().max(64).optional(),
 });
 
 const avatarStateMessage = z.object({

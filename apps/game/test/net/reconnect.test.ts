@@ -26,7 +26,8 @@ describe('client reconnect recovers identity (P3)', () => {
     a.destroy(); // simulate a dropped connection
     await sleep(100);
 
-    const a2 = new NetworkSystem({ url: ctx.url, displayName: 'A', playerId: first.playerId });
+    // Reclaiming the identity requires presenting the issued token alongside the id.
+    const a2 = new NetworkSystem({ url: ctx.url, displayName: 'A', playerId: first.playerId, token: first.token });
     nets.push(a2);
     const second = await a2.connect();
     expect(second.playerId).toBe(first.playerId); // same identity recovered

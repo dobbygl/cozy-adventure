@@ -53,7 +53,7 @@ describe('P3 keepalive, timeout and reconnect', () => {
     a.close();
     await sleep(120); // within the reconnect window
 
-    const { c: b, joined: jb } = await joinClient(ctx.url, { playerId });
+    const { c: b, joined: jb } = await joinClient(ctx.url, { playerId, token: ja.token });
     expect(jb.playerId).toBe(playerId);
     expect(countItem(jb.player.inventory, 'wood')).toBe(woodGained);
     expect(jb.world.diffs.some((d) => d.type === 'node_depleted' && d.networkId === 5)).toBe(true);
@@ -62,13 +62,32 @@ describe('P3 keepalive, timeout and reconnect', () => {
 
   it('a second connection for the same player kicks the old one (replaced)', async () => {
     ctx = await startTestServer();
-    const a = await MockClient.connect(ctx.url);
-    a.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: 'dup-id' });
-    await a.waitFor('joined');
+    // First join with no playerId: the server mints the identity + token.
+    const { c: a, joined: ja } = await joinClient(ctx.url);
 
-    const { c: b } = await joinClient(ctx.url, { playerId: 'dup-id' });
+    // The same player (its token) reconnecting from a second tab kicks the first.
+    const { c: b } = await joinClient(ctx.url, { playerId: ja.playerId, token: ja.token });
     const kick = await a.waitFor('kick');
     expect(kick.reason).toBe('replaced');
     b.close();
+  });
+
+  it('rejects claiming a playerId without a valid token (anti-impersonation)', async () => {
+    ctx = await startTestServer();
+    // A victim joins; every peer can see their playerId, but not their token.
+    const { c: victim, joined: jv } = await joinClient(ctx.url);
+
+    // An attacker who knows the playerId but presents no / a wrong token is rejected.
+    const noToken = await MockClient.connect(ctx.url);
+    noToken.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: jv.playerId });
+    expect((await noToken.waitFor('error')).code).toBe('auth');
+
+    const wrongToken = await MockClient.connect(ctx.url);
+    wrongToken.send({ t: 'join', protocolVersion: PROTOCOL_VERSION, playerId: jv.playerId, token: 'deadbeef' });
+    expect((await wrongToken.waitFor('error')).code).toBe('auth');
+
+    // The victim was never kicked.
+    expect(victim.isClosed).toBe(false);
+    victim.close();
   });
 });
