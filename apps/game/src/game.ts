@@ -160,6 +160,8 @@ export class Game {
         // time (they exist by begin(), after the world is built).
         worldHandlers: {
           onTreeChopped: (networkId) => this.environment?.removeTreeByNetworkId(networkId),
+          onBuildingPlaced: (building) => this.buildingSystem?.materializeNetworkBuilding(building),
+          onBuildingRemoved: (networkId) => this.buildingSystem?.removeNetworkBuilding(networkId),
         },
       });
       await this.network.connect();
@@ -850,6 +852,13 @@ addSampleItemsToInventory() {
       // Set player reference for grid following
       if (this.player) {
         this.buildingSystem.setPlayer(this.player);
+      }
+
+      // Multiplayer: route placement through the server (apply-on-confirm). In local
+      // mode requestPlace stays null and building keeps its existing behavior.
+      if (this.network) {
+        this.buildingSystem.requestPlace = (cmd) =>
+          this.network?.sendCommand({ type: 'place_building', ...cmd });
       }
 
       // Wire the touch build controls to the building system (mirrors V/R/X/C).

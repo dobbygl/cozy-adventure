@@ -7,6 +7,16 @@ import { LevelManager } from './LevelManager.js';
 import type { Inventory, Item } from './inventory.js';
 import type { CollisionSystem } from './CollisionSystem.js';
 import type { BuildableObject } from './BuildableObjectsRegistry.js';
+import type { Vec3, BuildingCell, BuildingState } from '@cozy/shared';
+
+/** Payload Game needs to emit a place_building command (multiplayer). */
+export interface PlaceBuildingRequest {
+  registryType: string;
+  position: Vec3;
+  rotation: Vec3;
+  level: number;
+  cell: BuildingCell;
+}
 
 export class BuildingSystem {
   scene: THREE.Scene;
@@ -50,6 +60,12 @@ export class BuildingSystem {
   rKeyPressed = false;
   vKeyPressed = false;
   xKeyPressed = false;
+  /**
+   * In multiplayer, Game sets this to emit a place_building command. When present,
+   * placement is server-authoritative: emit the command and let the confirmed event
+   * materialize the building, instead of building locally. Null = local mode.
+   */
+  requestPlace: ((cmd: PlaceBuildingRequest) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -832,7 +848,28 @@ updateLevelReferences() {
     
     console.log('🔨 Building wall at:', buildPosition);
     console.log('  Claiming cells:', occupiedCells);
-    
+
+    // Multiplayer: placement is server-authoritative. Emit a place_building command
+    // (with the anchor cell) and let the confirmed building_placed event materialize
+    // it on every client. Resources are consumed optimistically (a rejected placement
+    // is not refunded in v1). In local mode requestPlace is null and we build directly.
+    if (this.requestPlace) {
+      const cell: BuildingCell = {
+        level: this.levelManager.currentLevel,
+        gx: Math.round((buildPosition.x + 0.001) / this.gridSize),
+        gz: Math.round((buildPosition.z + 0.001) / this.gridSize),
+      };
+      this.consumeResources();
+      this.requestPlace({
+        registryType: this.selectedBuildObject,
+        position: { x: buildPosition.x, y: buildPosition.y, z: buildPosition.z },
+        rotation: { x: 0, y: this.currentRotation, z: 0 },
+        level: cell.level,
+        cell,
+      });
+      return;
+    }
+
     // Create actual wall/object
     const newWall = currentBuildObject.mesh.clone();
     newWall.position.copy(buildPosition);
@@ -1621,6 +1658,40 @@ updateLevelReferences() {
     }
   }
   
+  /**
+   * Materialize a server-confirmed building (multiplayer onBuildingPlaced). Reuses
+   * the save-restore path, stamping the stable networkId so it can be matched later.
+   * Cell-occupancy tracking is approximate for buildings on a non-current level
+   * (the mesh position is exact); the server remains authoritative for conflicts.
+   */
+  materializeNetworkBuilding(building: BuildingState): void {
+    this.saveManager.restoreBuilding({
+      type: building.registryType,
+      position: building.position,
+      rotation: building.rotation.y,
+      networkId: building.networkId,
+    });
+  }
+
+  /**
+   * Remove a server-confirmed building by networkId (multiplayer onBuildingRemoved).
+   * Defensive: the v1 server emits no building_removed command, but reconnect
+   * snapshots and future removals route here.
+   */
+  removeNetworkBuilding(networkId: number): void {
+    const wall = this.builtWalls.find((w) => w.userData.networkId === networkId);
+    if (!wall) return;
+    this.scene.remove(wall);
+    this.collisionSystem?.removeCollider(wall);
+    this.builtWalls = this.builtWalls.filter((w) => w !== wall);
+    for (const [key, mapped] of this.cellToWallMap) {
+      if (mapped === wall) {
+        this.cellToWallMap.delete(key);
+        this.occupiedCells.delete(key);
+      }
+    }
+  }
+
   // Clean up method
   destroy() {
     this.exitBuildingMode();

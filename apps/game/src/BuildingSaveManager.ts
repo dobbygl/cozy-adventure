@@ -5,6 +5,8 @@ export interface SavedBuildObject {
   type: string;
   position: { x: number; y: number; z: number };
   rotation: number;
+  /** Stable network id, present only when restoring a server-confirmed building (multiplayer). */
+  networkId?: number;
 }
 
 /** A building type passed as an object instead of a plain string key. */
@@ -227,6 +229,12 @@ export class BuildingSaveManager {
     if (!building) {
       console.error(`Failed to create building mesh for type: ${type}`);
       return false;
+    }
+
+    // Stamp the stable network id (multiplayer) so the building can be matched on
+    // the wire and removed by id later. Never mesh.uuid (Principle II).
+    if (buildingData.networkId !== undefined) {
+      building.userData.networkId = buildingData.networkId;
     }
 
     // Add to scene
