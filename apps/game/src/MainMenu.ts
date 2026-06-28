@@ -139,12 +139,18 @@ export class MainMenu {
         left: 0;
         width: 100vw;
         height: 100vh;
+        height: 100dvh;
         z-index: 10000;
         font-family: 'Nunito', sans-serif;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        box-sizing: border-box;
+        padding: max(16px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
       }
       
       .menu-background {
@@ -176,6 +182,7 @@ export class MainMenu {
         text-align: center;
         max-width: 500px;
         width: 90%;
+        margin: auto 0;
         padding: 40px;
         background: linear-gradient(145deg, rgba(245, 222, 179, 0.95), rgba(222, 184, 135, 0.9));
         border: 4px solid #8B4513;
@@ -185,6 +192,10 @@ export class MainMenu {
           inset 0 4px 8px rgba(255, 255, 255, 0.3),
           inset 0 -4px 8px rgba(0, 0, 0, 0.1);
         animation: menuFloat 6s ease-in-out infinite;
+      }
+
+      .mp-fields {
+        width: 100%;
       }
       
       @keyframes menuFloat {
@@ -290,7 +301,7 @@ export class MainMenu {
         display: flex;
         flex-direction: column;
         gap: 15px;
-        margin-bottom: 30px;
+        margin-bottom: 0;
       }
       
       .menu-btn {
@@ -418,6 +429,76 @@ export class MainMenu {
         .menu-btn {
           padding: 12px 16px;
           font-size: 0.95rem;
+        }
+      }
+
+      @media (max-height: 720px), (max-width: 768px) and (orientation: landscape) {
+        .main-menu {
+          padding-top: max(8px, env(safe-area-inset-top));
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+
+        .menu-content {
+          width: min(92vw, 560px);
+          max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+          overflow-y: auto;
+          padding: 14px 22px;
+          border-radius: 18px;
+          animation: none;
+        }
+
+        .game-title h1 {
+          font-size: 1.8rem;
+          margin-bottom: 2px;
+        }
+
+        .subtitle {
+          font-size: 0.78rem;
+          margin-bottom: 10px;
+          letter-spacing: 1px;
+        }
+
+        .character-select {
+          gap: 6px;
+          margin-bottom: 12px;
+        }
+
+        .char-label {
+          font-size: 0.72rem;
+          letter-spacing: 1.4px;
+        }
+
+        .char-options {
+          gap: 8px;
+        }
+
+        .char-option {
+          width: 88px;
+          padding: 8px 8px;
+          border-radius: 14px;
+        }
+
+        .char-option .char-icon {
+          font-size: 1.35rem;
+        }
+
+        .menu-buttons {
+          gap: 9px;
+        }
+
+        .menu-btn {
+          min-height: 48px;
+          padding: 9px 16px;
+          border-radius: 14px;
+          font-size: 0.95rem;
+        }
+
+        .mp-input {
+          min-height: 44px !important;
+          margin-bottom: 8px !important;
+          padding: 9px 12px !important;
+          border-radius: 12px !important;
+          font-size: 0.95rem !important;
         }
       }
       
@@ -727,9 +808,9 @@ export class MainMenu {
     // Pre-fill the last server used (best-effort; localStorage may be unavailable, e.g. private mode).
     try {
       const last = localStorage.getItem('cozy:lastServer');
-      if (last) (this.qs('#mp-url') as HTMLInputElement).value = last;
+      (this.qs('#mp-url') as HTMLInputElement).value = last || 'wss://cozy.gomezleon.es';
     } catch {
-      /* ignore: remembering the last server is non-critical */
+      (this.qs('#mp-url') as HTMLInputElement).value = 'wss://cozy.gomezleon.es';
     }
     this.qs('#mp-join').addEventListener('click', () => {
       void this.joinMultiplayer();
