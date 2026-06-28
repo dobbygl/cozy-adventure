@@ -162,6 +162,18 @@ export class Game {
           onTreeChopped: (networkId) => this.environment?.removeTreeByNetworkId(networkId),
           onBuildingPlaced: (building) => this.buildingSystem?.materializeNetworkBuilding(building),
           onBuildingRemoved: (networkId) => this.buildingSystem?.removeNetworkBuilding(networkId),
+          onDropSpawned: (drop) => {
+            const item = this.itemRegistry?.[drop.itemId];
+            if (!item || !this.itemDropSystem) return;
+            const pos = new THREE.Vector3(drop.position.x, drop.position.y, drop.position.z);
+            void this.itemDropSystem.dropItem(item, pos, drop.quantity).then((mesh) => {
+              mesh.userData.networkId = drop.networkId;
+            });
+          },
+          onDropRemoved: (networkId) => {
+            const mesh = this.pickupableItems.find((m) => m.userData.networkId === networkId);
+            if (mesh) this.itemDropSystem?.removeItem(mesh);
+          },
         },
       });
       await this.network.connect();
@@ -492,7 +504,20 @@ addSampleItemsToInventory() {
   }
   tryPickupItem() {
     if (!this.nearestPickupableItem || !this.player || !this.inventory) return;
-    
+
+    // Multiplayer: picking up is server-authoritative. Emit pickup_drop and let the
+    // confirmed drop_removed event remove the drop; do not pick up locally. The item
+    // is granted to the server-side inventory; reflecting server-authoritative
+    // inventory grants on the client is a known v1 gap (needs an inventory-sync
+    // message). In local mode this branch is skipped.
+    if (this.network) {
+      const networkId = this.nearestPickupableItem.userData.networkId;
+      if (typeof networkId === 'number') {
+        this.network.sendCommand({ type: 'pickup_drop', networkId });
+      }
+      return;
+    }
+
     // Check distance between player and nearest item
     const playerPosition = this.player.mesh!.position;
     const itemPosition = this.nearestPickupableItem.position;
