@@ -37,6 +37,7 @@ export interface NetworkHandlers {
   onWorldSnapshot?(world: WorldSnapshot): void;
   onCommandRejected?(seq: number, reason: RejectReason): void;
   onWorldTime?(clock: WorldClockState): void;
+  onInventoryDelta?(itemId: string, delta: number): void;
   onError?(code: ErrorCode, message: string): void;
   onKick?(reason: KickReason): void;
   onClose?(): void;
@@ -215,6 +216,9 @@ export class NetworkSystem {
         break;
       case 'world_time':
         this.handlers.onWorldTime?.({ dayTime: msg.dayTime, gameTime: msg.gameTime, weather: msg.weather });
+        break;
+      case 'inventory_delta':
+        this.handlers.onInventoryDelta?.(msg.itemId, msg.delta);
         break;
       case 'error':
         this.handlers.onError?.(msg.code, msg.message);

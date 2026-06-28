@@ -265,6 +265,12 @@ export class GameServer {
       // Apply-on-confirm (v1): broadcast the authoritative event to everyone,
       // including the emitter.
       this.broadcast({ t: 'event', diff: outcome.diff });
+      // Tell the actor about any server-authoritative inventory change (chop grants a
+      // resource, pickup grants the drop, drop removes it) so its client reflects it.
+      if (outcome.inventoryDelta) {
+        session.send({ t: 'inventory_delta', ...outcome.inventoryDelta });
+        this.metrics.incMessagesOut();
+      }
     } else {
       session.send({ t: 'command_rejected', seq: msg.seq, reason: outcome.reason });
       this.metrics.incMessagesOut();

@@ -30,6 +30,8 @@ import type {
 export interface NetworkSessionHandlers {
   onCommandRejected?(seq: number, reason: RejectReason): void;
   onWorldTime?(clock: WorldClockState): void;
+  /** A server-authoritative change to our own inventory (chop/pickup/drop). */
+  onInventoryDelta?(itemId: string, delta: number): void;
   onError?(code: ErrorCode, message: string): void;
   onKick?(reason: KickReason): void;
   onClose?(): void;
@@ -90,6 +92,7 @@ export class NetworkSession {
       },
       onCommandRejected: (seq, reason) => h.onCommandRejected?.(seq, reason),
       onWorldTime: (clock) => h.onWorldTime?.(clock),
+      onInventoryDelta: (itemId, delta) => h.onInventoryDelta?.(itemId, delta),
       onError: (code, message) => h.onError?.(code, message),
       onKick: (reason) => h.onKick?.(reason),
       onClose: () => h.onClose?.(),

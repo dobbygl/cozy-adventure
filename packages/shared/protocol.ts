@@ -164,6 +164,19 @@ export interface WorldSnapshotMessage {
   world: WorldSnapshot;
 }
 
+/**
+ * A server-authoritative change to the recipient's own inventory, caused by a world
+ * command it could not apply locally (chop grants a resource, pickup grants the drop,
+ * drop removes the item). Private to the affected player. `delta > 0` is a gain,
+ * `delta < 0` a loss. The client applies it on top of its local inventory (which also
+ * holds client-only mutations like building cost), so it is a delta, not a snapshot.
+ */
+export interface InventoryDeltaMessage {
+  t: 'inventory_delta';
+  itemId: string;
+  delta: number;
+}
+
 export interface PongMessage {
   t: 'pong';
   serverTime: number;
@@ -198,6 +211,7 @@ export type ServerMessage =
   | CommandRejectedMessage
   | WorldTimeMessage
   | WorldSnapshotMessage
+  | InventoryDeltaMessage
   | PongMessage
   | ErrorMessage
   | KickMessage;

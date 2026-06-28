@@ -179,6 +179,9 @@ export class Game {
           },
         },
         handlers: {
+          // Server-authoritative inventory change (chop/pickup/drop): reflect it in
+          // our local inventory. Closes the resource loop in network mode.
+          onInventoryDelta: (itemId, delta) => this.applyInventoryDelta(itemId, delta),
           // Unexpected drop (not our own destroy()): try to reconnect in place.
           onClose: () => void this.handleNetworkDrop(),
           // A kick is intentional (replaced/timeout/shutdown): don't auto-reconnect.
@@ -888,6 +891,19 @@ addSampleItemsToInventory() {
       this.renderer.forceContextLoss();
       this.renderer = null;
     }
+  }
+
+  /**
+   * Apply a server-authoritative inventory change (multiplayer). Items granted by
+   * the server (chopped wood, picked-up drops) arrive here because the network
+   * command paths intentionally do not mutate the inventory locally, so this is the
+   * single place those grants land — no double-counting. Building cost stays local.
+   */
+  private applyInventoryDelta(itemId: string, delta: number): void {
+    const item = this.itemRegistry?.[itemId];
+    if (!item || !this.inventory) return;
+    if (delta > 0) this.inventory.addItem(item, delta);
+    else if (delta < 0) this.inventory.removeItem(itemId, -delta);
   }
 
   /**

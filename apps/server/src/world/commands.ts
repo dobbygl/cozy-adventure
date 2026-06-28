@@ -27,7 +27,7 @@ export interface CommandContext {
 }
 
 export type CommandOutcome =
-  | { ok: true; diff: WorldDiff }
+  | { ok: true; diff: WorldDiff; inventoryDelta?: { itemId: string; delta: number } }
   | { ok: false; reason: RejectReason };
 
 function inReach(ctx: CommandContext, target: Vec3): boolean {
@@ -65,9 +65,10 @@ function chopTree(
     at: now,
   };
   ctx.world.recordDiff(diff);
-  // Best-effort resource grant; a full inventory does not un-chop the tree.
+  // Best-effort resource grant; a full inventory does not un-chop the tree. The
+  // delta tells the client to reflect the grant in its own inventory.
   addItem(ctx.player.inventory, CHOP_RESOURCE_ID, 1);
-  return { ok: true, diff };
+  return { ok: true, diff, inventoryDelta: { itemId: CHOP_RESOURCE_ID, delta: 1 } };
 }
 
 function placeBuilding(
@@ -111,7 +112,7 @@ function pickupDrop(
     at: now,
   };
   ctx.world.recordDiff(diff);
-  return { ok: true, diff };
+  return { ok: true, diff, inventoryDelta: { itemId: drop.itemId, delta: drop.quantity } };
 }
 
 function dropItem(
@@ -132,5 +133,5 @@ function dropItem(
   };
   const diff: WorldDiff = { type: 'drop_spawned', entity, at: now };
   ctx.world.recordDiff(diff);
-  return { ok: true, diff };
+  return { ok: true, diff, inventoryDelta: { itemId: cmd.itemId, delta: -cmd.quantity } };
 }
