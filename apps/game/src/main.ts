@@ -1,10 +1,14 @@
 import { Game } from './game.js';
 import { LoadingScreen } from './LoadingScreen.js';
+import { registerServiceWorker } from './pwa/install.js';
 let loadingScreen: LoadingScreen | null;
 let game: Game | undefined;
 // Initialize the game when the page loads
 async function initGame() {
   try {
+    // PWA: offline tras la primera carga. Self-guarded (no corre en iframe ni en DEV); no toca
+    // la lógica del juego y degrada con elegancia si el registro falla.
+    registerServiceWorker();
     // Create and show loading screen
     loadingScreen = new LoadingScreen();
     loadingScreen.setProgress(0, 'Starting game initialization...');

@@ -2,13 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Cozy Adventure</title>
     <!-- Inline SVG favicon: avoids the /favicon.ico 404 with no extra asset/request. -->
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%8C%B2</text></svg>"
     />
+    <!-- PWA: instalable y con offline tras la primera carga (registro en src/pwa/install.ts, solo
+         a nivel superior, no en el iframe del host). Rutas relativas para que resuelvan bajo /play/. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#1fa090" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cozy" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <style>
       body {
         margin: 0;
@@ -245,10 +254,5 @@
     </div>
     
     <script type="module" src="src/main.js"></script>
-    <script src="/ChatManager.js"></script>
-    <script src="/ImageGenerator.js"></script>
-    <script src="/ProgressLogger.js"></script>
-    <script src="/OGP.js"></script>
-    <script src="/ScriptsLoader-Universal.js"></script>
   </body>
 </html>
