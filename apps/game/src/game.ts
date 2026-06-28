@@ -70,6 +70,8 @@ export class Game {
   network: NetworkSession | null;
   /** 'local' (offline, cookies, pause-on-hide) or 'network' (live, keepalive, no freeze). */
   sessionMode: 'local' | 'network';
+  /** Set when the server kicks us (replaced/timeout/shutdown), to suppress auto-reconnect. */
+  networkKicked: boolean;
   /** Built in createSampleItems() during startGame(), before any read. */
   itemRegistry!: Record<string, Item>;
 
@@ -123,6 +125,7 @@ export class Game {
     // Multiplayer session (null in local mode)
     this.network = null;
     this.sessionMode = 'local';
+    this.networkKicked = false;
 
     // Store game instance globally for slider access
     (window as any).gameInstance = this;
@@ -174,6 +177,16 @@ export class Game {
             const mesh = this.pickupableItems.find((m) => m.userData.networkId === networkId);
             if (mesh) this.itemDropSystem?.removeItem(mesh);
           },
+        },
+        handlers: {
+          // Unexpected drop (not our own destroy()): try to reconnect in place.
+          onClose: () => void this.handleNetworkDrop(),
+          // A kick is intentional (replaced/timeout/shutdown): don't auto-reconnect.
+          onKick: (reason) => {
+            this.networkKicked = true;
+            console.warn(`Disconnected by server: ${reason}`);
+          },
+          onError: (code, message) => console.warn(`Network error: ${code} ${message}`),
         },
       });
       await this.network.connect();
@@ -865,6 +878,32 @@ addSampleItemsToInventory() {
     if (this.network) {
       this.network.destroy();
       this.network = null;
+    }
+
+    // Release GPU resources. game.destroy() historically omitted this (see the
+    // technical report); the multiplayer teardown path now relies on it so repeated
+    // sessions don't leak WebGL contexts.
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.forceContextLoss();
+      this.renderer = null;
+    }
+  }
+
+  /**
+   * Handle an unexpected loss of the network connection (multiplayer): attempt an
+   * in-place reconnect that recovers our playerId within the server's window and
+   * reconciles the world. A kick is intentional and skips reconnect. On failure the
+   * client stays alive (no crash); a graceful return-to-menu is follow-up polish.
+   */
+  private async handleNetworkDrop(): Promise<void> {
+    if (!this.network || this.networkKicked) return;
+    console.warn('Connection lost; attempting to reconnect...');
+    try {
+      await this.network.reconnect();
+      console.log('Reconnected to the server.');
+    } catch (err) {
+      console.error('Reconnect failed:', err);
     }
   }
 

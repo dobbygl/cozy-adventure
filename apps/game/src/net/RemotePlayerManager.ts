@@ -76,6 +76,13 @@ export class RemotePlayerManager {
     return this.remotes.has(playerId);
   }
 
+  /** Drop (and dispose) every remote not in `keep` — used to reconcile presence on reconnect. */
+  prune(keep: Set<string>): void {
+    for (const playerId of [...this.remotes.keys()]) {
+      if (!keep.has(playerId)) this.remove(playerId);
+    }
+  }
+
   get size(): number {
     return this.remotes.size;
   }

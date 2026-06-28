@@ -1,4 +1,10 @@
-import { NetworkSystem, type NetworkConfig, type AvatarStateInput, type JoinResult } from './NetworkSystem.js';
+import {
+  NetworkSystem,
+  type NetworkConfig,
+  type NetworkHandlers,
+  type AvatarStateInput,
+  type JoinResult,
+} from './NetworkSystem.js';
 import { RemotePlayerManager, type RemotePlayerFactory } from './RemotePlayerManager.js';
 import { ClientWorld, type WorldChangeHandlers } from './ClientWorld.js';
 import type {
@@ -41,9 +47,11 @@ export interface NetworkSessionDeps {
 }
 
 export class NetworkSession {
-  readonly net: NetworkSystem;
+  net: NetworkSystem;
   /** The client's view of the authoritative world (diffs applied to derived state + scene). */
   readonly world: ClientWorld;
+  private readonly config: NetworkConfig;
+  private readonly netHandlers: NetworkHandlers;
   private readonly remoteFactory: RemotePlayerFactory;
   private readonly now: () => number;
   private remotes: RemotePlayerManager | null = null;
@@ -58,13 +66,15 @@ export class NetworkSession {
   private pendingDiffs: WorldDiff[] = [];
 
   constructor(deps: NetworkSessionDeps) {
+    this.config = deps.config;
     this.remoteFactory = deps.remoteFactory;
     this.now = deps.now;
     this.world = new ClientWorld(deps.worldHandlers);
     const h = deps.handlers ?? {};
     // Presence/relay/world-sync are handled here; rejection/error/time/close forward
     // to the game. Before begin(), peer and world events are buffered (no scene yet).
-    this.net = new NetworkSystem(deps.config, {
+    // The handlers reference `this`, so they survive a transport swap on reconnect.
+    this.netHandlers = {
       onPeerJoined: (peer) => this.onPeerJoined(peer),
       onPeerLeft: (id) => this.onPeerLeft(id),
       onAvatarSnapshots: (players) => {
@@ -83,7 +93,8 @@ export class NetworkSession {
       onError: (code, message) => h.onError?.(code, message),
       onKick: (reason) => h.onKick?.(reason),
       onClose: () => h.onClose?.(),
-    });
+    };
+    this.net = new NetworkSystem(this.config, this.netHandlers);
   }
 
   /**
@@ -118,6 +129,31 @@ export class NetworkSession {
     this.pendingDiffs = [];
     for (const peer of this.pendingPeers) this.remotes?.add(peer);
     this.pendingPeers = [];
+  }
+
+  /**
+   * Reconnect the transport in place after a drop, recovering our playerId within the
+   * server's window. Keeps the ClientWorld and remote avatars: the recovered snapshot
+   * replays idempotently (already-applied diffs are no-ops) and presence is reconciled
+   * (new peers added, departed peers pruned). Throws if the reconnect fails.
+   */
+  async reconnect(timeoutMs?: number): Promise<JoinResult> {
+    this.net.destroy();
+    this.net = new NetworkSystem({ ...this.config, playerId: this.localPlayerId }, this.netHandlers);
+    const joined = await this.net.connect(timeoutMs);
+    this.localPlayerId = joined.playerId;
+    this.worldSeed = joined.seed;
+    this.remotes ??= new RemotePlayerManager(joined.playerId, this.remoteFactory);
+    if (this.started) {
+      this.world.loadSnapshot(joined.world); // idempotent: existing entities no-op, new ones apply
+      const present = new Set(joined.peers.map((p) => p.playerId));
+      for (const peer of joined.peers) this.remotes.add(peer);
+      this.remotes.prune(present);
+    } else {
+      this.pendingWorld = joined.world;
+      this.pendingPeers = [...joined.peers];
+    }
+    return joined;
   }
 
   private onPeerJoined(peer: PeerInfo): void {

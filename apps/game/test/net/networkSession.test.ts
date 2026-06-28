@@ -151,6 +151,31 @@ describe('NetworkSession against an in-process @cozy/server', () => {
     expect(a.world.isTreeChopped(42)).toBe(true);
   });
 
+  it('reconnect preserves world state and reconciles idempotently (P3)', async () => {
+    ctx = await startTestServer({ RECONNECT_WINDOW_MS: '30000' });
+    const a = new NetworkSession({
+      config: { url: ctx.url, displayName: 'A' },
+      remoteFactory: (p: PeerInfo) => new FakeRemote(p.playerId),
+      now: () => 0,
+    });
+    cleanups.push(() => a.destroy());
+    await a.connect();
+    a.begin();
+    const idBefore = a.playerId;
+
+    const b = new NetworkSystem({ url: ctx.url });
+    cleanups.push(() => b.destroy());
+    await b.connect();
+    b.sendCommand({ type: 'chop_tree', networkId: 7 });
+    await sleep(200);
+    expect(a.world.isTreeChopped(7)).toBe(true);
+
+    await a.reconnect();
+    expect(a.isConnected).toBe(true);
+    expect(a.playerId).toBe(idBefore); // identity recovered
+    expect(a.world.isTreeChopped(7)).toBe(true); // state preserved, no double-apply
+  });
+
   it('buffers world diffs before begin() and applies them on begin()', async () => {
     ctx = await startTestServer();
     const chopped: number[] = [];
