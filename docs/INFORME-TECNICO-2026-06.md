@@ -6,6 +6,13 @@ Complementa docs/PROPUESTA-MEJORAS.md (roadmap previo); aquí están los hallazg
 
 # Informe técnico de prioridades: cozy-adventure
 
+> **Actualización 2026-06-28.** Este informe se generó el 2026-06-27. Después se ejecutaron dos cambios que dejan **superados** varios hitos (marcados ✅ más abajo):
+>
+> - **Salida del iframe del playground / retirada del puente host de Rosebud** (commit `92037ee`): borrados `ChatManager.js`, `ImageGenerator.js`, `OGP.js`, `ProgressLogger.js` y `ScriptsLoader-Universal.js`; `index.html` carga solo `src/main.js`; el juego corre standalone como PWA. Esto cierra el hallazgo de seguridad sobre `event.origin`/`postMessage`, el item P2 "endurecer postMessage" y el P0 de "verificar storage dentro del iframe" (ya no hay iframe).
+> - **Guardado: de cookies+chunking a una sola escritura en `localStorage`** (commits `4a16f57`, `11befc6`, `b571f4d`). Esto cierra el modelo de cookies/`Partitioned` y elimina el chunking.
+>
+> **El grueso del informe sigue vigente.** Los bugs de persistencia son de **lógica** (borrado en lectura fallida, refs a `levelManager`, parse desnudo, reparadores de JSON, serializadores muertos) e **independientes del backend de storage**: siguen en el código. Ojo: la migración movió líneas, así que las referencias `file:line` de aquí pueden estar desfasadas. **La lista consolidada de lo pendiente, con líneas actuales, está al final de este documento: ["Pendiente tras la actualización (2026-06-28)"](#pendiente-tras-la-actualización-2026-06-28).**
+
 ## Resumen ejecutivo
 
 El proyecto está sano en lo medible: `typecheck` limpio en strict global, 34 tests verdes, build de producción correcto y la migración a TypeScript completada. Los hallazgos reales y nuevos no son crashes ni regresiones visibles, sino que se concentran en dos zonas concretas: la robustez de la persistencia (SaveSystem) y la consistencia del estado de construcción multinivel, y justo el camino más frágil (troceo y reensamblado de la partida en cookies más su restauración) no tiene cobertura de tests. Hay un cuarto frente de fondo, la deuda de ciclo de vida (teardown/dispose), que hoy es inerte porque el reinicio es un `location.reload()`, pero que la dirección multijugador ya decidida (co-op persistente, standalone, reinicio en la misma página) convertirá en fuga real de listeners y memoria de GPU. El frame loop tiene margen de mejora (agua recalculada por frame, traverse de árboles por cada mousemove, reconstrucción de la lista de raycast por frame), modesto hoy pero que escala mal. Tras revisar severidades una a una, los únicos hallazgos que quedan en "alto" son deuda ya documentada y diferida; los descubrimientos nuevos topan en "medio", pero son bugs funcionales concretos, varios de corrección barata.
@@ -28,6 +35,12 @@ Ordenadas por impacto alto con esfuerzo bajo primero. Solo lo que de verdad muev
 | 10 | Borrar un muro de otro nivel libera celdas del nivel equivocado (celdas fantasma) | Corrección / Bug | Medio | M | Derivar el nivel desde la Y del muro y operar sobre ese nivel (BuildingSystem.ts:1223) |
 | 11 | El agua recomputa normales y resube el buffer completo a GPU cada frame | Rendimiento | Medio | M | Mover el desplazamiento de olas a un vertex shader (environment.ts:437) |
 | 12 | Tres raycasts/frame reconstruyen su lista y raycastean el agua (8192 tris) | Rendimiento | Medio | M | Cachear `meshesToTest` por uso; excluir el agua del set de suelo (CharacterController.ts:336, CollisionSystem.ts:131) |
+
+> **Nota 2026-06-28 sobre las filas #7 y #9.** Al pasar a una sola escritura de `localStorage`, el chunking ya no existe, pero **ninguna de las dos queda resuelta**:
+> - **#7 sigue viva, reformulada:** `setLocalStorage` (SaveSystem.ts:1247) se traga el error en su propio try/catch y `saveGame` (SaveSystem.ts:57→63) devuelve `true` igualmente. Una escritura fallida (cuota, storage deshabilitado) sigue reportando éxito. Acción: que `setLocalStorage` devuelva boolean y que `saveGame` propague el fallo.
+> - **#9 se transforma:** ya no hay round-trip de chunks que probar, pero falta el test de round-trip del save completo + propagación de fallo de escritura.
+>
+> Las refs `file:line` de la tabla son del 2026-06-27 (pre-migración). Para las actuales, ver la lista de pendientes.
 
 ---
 
@@ -142,7 +155,7 @@ inventory.ts:67: `return this.item.id === item.id && this.quantity + quantity <=
 
 ## Persistencia (SaveSystem)
 
-**Estado general: este es el bloque con más hallazgos reales y nuevos, y el de mayor riesgo de fondo, porque opera sobre la única copia de los datos del usuario y casi nada está cubierto por tests. El modelo de cookies+chunking es intencional y correcto (no tocar); el problema está en cómo se manejan los fallos y los esquemas.** Varios fallos se encadenan: un guardado que falla en silencio (más abajo) provoca, en la carga siguiente, el borrado destructivo de la partida parcial.
+**Estado general: este es el bloque con más hallazgos reales y nuevos, y el de mayor riesgo de fondo, porque opera sobre la única copia de los datos del usuario y casi nada está cubierto por tests.** ~~El modelo de cookies+chunking es intencional y correcto (no tocar);~~ ✅ **Actualizado 2026-06-28:** el guardado ya **no** usa cookies ni chunking, es una sola escritura en `localStorage`. **Pero los hallazgos de abajo son de lógica de manejo de fallos/esquemas, independientes del backend, y siguen vigentes.** Varios fallos se encadenan: un guardado que falla en silencio (más abajo) provoca, en la carga siguiente, el borrado destructivo de la partida parcial.
 
 ### Una lectura fallida borra la partida entera — NUEVO
 
@@ -220,7 +233,7 @@ BuildingSystem.ts:692 usa `cellSize ... : 3.5` y SaveSystem.ts:1145 usa `... : 1
 
 ### Código muerto y deuda conocida
 
-- **36 variables/imports sin usar confirmados por lint** — NUEVO (rosieControls.ts:164-171; player.ts:251-268; ItemDropSystem.ts:2; game.ts:429,892). Eliminar los confirmados. Excluir los ficheros con la feature de salto sin commitear (CharacterController.ts, player.ts jump*). Esfuerzo S.
+- **Variables/imports sin usar confirmados por lint** — NUEVO (~~rosieControls.ts:164-171 → ✅ fichero ya borrado~~; player.ts:251-268; ItemDropSystem.ts:2; game.ts:429,892). Eliminar los confirmados que queden. Excluir los ficheros con la feature de salto sin commitear (CharacterController.ts, player.ts jump*). Esfuerzo S.
 - **Casing inconsistente de ficheros** — DOCUMENTADO-FRÁGIL (environment.ts vs CharacterController.ts). Un import con casing equivocado compila en macOS y rompe en Linux/CI. No renombrar en masa ahora; fijar convención y migrar por tandas con `git mv` validando en CI Linux. Mientras, casing exacto al importar.
 - **~224 `any` y 77 casts** — NUEVO. Parte es legítima (frontera Three/DOM). No perseguir el conteo; estrechar al extraer `applyMatteShadows`/`ModelLoader` y acotar el resto a fronteras documentadas.
 
@@ -228,15 +241,17 @@ BuildingSystem.ts:692 usa `cellSize ... : 3.5` y SaveSystem.ts:1145 usa `... : 1
 
 ## Logging — un solo hallazgo, reportado por cuatro auditorías
 
-**Estado: el "drop console en prod" de Vite está YA-HECHO pero es PARCIAL.** El build solo elimina `console.log`/`info`/`debug` (vite.config.js:18, `esbuild.pure`), así que ~123 llamadas `console.error`/`warn` (64 + 59) sobreviven al bundle de producción. Y `ScriptsLoader-Universal.js:285` parchea `console.error` para hacer `window.parent.postMessage(..., '*')`: cada error reenvía mensaje y stack al padre (incluido `outerHTML` del recurso en errores de carga). Hay 604 `console.*` en `src/`, varias en rutas por frame o casi (game.ts:472,491,568; DogCompanion.ts:381,420; environment.ts:385 por árbol; ItemDropSystem.ts:60 por drop). Acción única: un logger con niveles gateado por entorno (`import.meta.env`), enrutar o silenciar `console.error`/`warn` en producción, y retirar el logging de bucles calientes. Esfuerzo M, transversal, no bloquea.
+**Estado: el "drop console en prod" de Vite está YA-HECHO pero es PARCIAL.** El build solo elimina `console.log`/`info`/`debug` (vite.config.js:18, `esbuild.pure`), así que ~123 llamadas `console.error`/`warn` (64 + 59) sobreviven al bundle de producción. ~~Y `ScriptsLoader-Universal.js:285` parchea `console.error` para hacer `window.parent.postMessage(..., '*')`.~~ ✅ **Actualizado 2026-06-28:** ese reenvío de errores al padre ya no existe (scripts host borrados), así que la fuga al host desaparece; **lo que sigue pendiente** es que ~123 `console.error`/`warn` lleguen al bundle de producción. Hay 604 `console.*` en `src/`, varias en rutas por frame o casi (game.ts:472,491,568; DogCompanion.ts:381,420; environment.ts:385 por árbol; ItemDropSystem.ts:60 por drop). Acción única: un logger con niveles gateado por entorno (`import.meta.env`), enrutar o silenciar `console.error`/`warn` en producción, y retirar el logging de bucles calientes. Esfuerzo M, transversal, no bloquea.
 
 ---
 
 ## Seguridad y build
 
-**Estado general: superficie acotada y bien razonada. Las decisiones intencionales (cookies, sourcemaps) se mantienen. El único frente accionable es la validación de `origin` en el listener de mensajes del host.**
+**Estado general: superficie acotada y bien razonada.** ✅ **Actualizado 2026-06-28:** la validación de `origin` (el frente accionable de este bloque) decae al borrar el puente host; el modelo de cookies pasó a `localStorage`. Solo se mantiene `sourcemaps` como decisión intencional, y queda como pendiente latente el self-XSS por `innerHTML`.
 
-### Sin validación de origin en el listener del host — NUEVO
+### Sin validación de origin en el listener del host — ✅ SUPERADO (2026-06-28)
+
+> **Superado por la salida del iframe (commit `92037ee`).** `ScriptsLoader-Universal.js` y el resto de scripts host se borraron; `index.html` ya no los carga. No queda listener de `message` del host ni `postMessage` con `targetOrigin '*'` en el bundle. El item P2 "endurecer postMessage" queda cerrado por eliminación. Texto original conservado abajo como referencia histórica.
 
 ScriptsLoader-Universal.js:13 atiende `requestCanvasRecording` y `requestScreenshot` de cualquier emisor sin comprobar `event.origin`, y responde con `targetOrigin '*'`. Riesgo acotado: las clases puente (ChatManager/ImageGenerator/OGP) no se usan en `src/` y van protegidas por un `requestId` con `crypto.randomUUID()`, así que no son forjables. La superficie real es `ScriptsLoader-Universal.js`, que sí se despliega y devuelve la imagen/vídeo del propio canvas del juego a quien lo pida; además `window.onerror` y el parche de `console.error` reenvían mensajes internos con `'*'`. Es fuga de información (captura del canvas, no secretos cross-origin), no ejecución de código. En standalone es inerte (ruta absoluta que no resuelve bajo `base './'`). **Es el item P2 "endurecer postMessage".** Acción: validar `event.origin` contra una allowlist del host antes de actuar (en especial screenshot/recording), sustituir los `targetOrigin '*'` por el origin esperado. Esfuerzo M.
 
@@ -246,12 +261,14 @@ inventoryUI.ts:1508 (y DogCompanion.ts:1029,1079; MainMenu.ts:772) interpolan da
 
 ### Decisiones intencionales — CONOCIDO-INTENCIONAL (dejar como están)
 
-- **Modelo de cookies del save** (SaveSystem.ts:1301): `SameSite=None;Secure;Partitioned` + fallback a localStorage + chunking está justificado por el contexto iframe (storage de terceros particionado). Solo se persiste estado de juego, sin datos personales ni tokens. Mantener; única nota, no meter datos sensibles en el save sin revisar este canal.
+- ~~**Modelo de cookies del save** (SaveSystem.ts:1301): `SameSite=None;Secure;Partitioned` + fallback a localStorage + chunking está justificado por el contexto iframe.~~ ✅ **SUPERADO (2026-06-28):** ya no hay cookies ni chunking; el save es una sola escritura en `localStorage` en el origen top-level (commits `4a16f57`/`11befc6`/`b571f4d`). Sigue siendo solo estado de juego, sin datos personales ni tokens; la nota de no meter datos sensibles en el save se mantiene.
 - **Sourcemaps en producción** (vite.config.js:13): el repo es público en GitHub, los `.map` no exponen nada nuevo. Aceptable; si un despliegue dejara de ser público, reconsiderar `hidden`.
 
-### P0 abierto reconocido (no comprobable headless)
+### P0 abierto reconocido — ✅ SUPERADO (2026-06-28)
 
-Verificar el comportamiento real de storage (cookies/Partitioned) dentro del iframe del host. No es un hallazgo nuevo, es el único P0 abierto que el roadmap ya reconoce y que solo se cierra probando en el host real. Refuerza la prioridad de los hallazgos #2 y #7 de la tabla: si el storage falla en el iframe, el guardado-que-miente y el borrado-en-lectura son justo lo que convierte ese fallo en pérdida de partidas.
+> **Cerrado por eliminación del iframe.** El P0 era verificar el storage de terceros (cookies/`Partitioned`) dentro del iframe del host. Al salir del iframe y persistir en `localStorage` top-level, ese canal desaparece y el riesgo se desactiva. **Lo que NO desaparece y sube de prioridad:** los hallazgos #2 (borrado en lectura fallida) y #7 (el guardado miente sobre el éxito), que ahora son la principal vía de pérdida de partidas, sin la red de seguridad del fallback en cascada de cookies. Texto original abajo.
+
+~~Verificar el comportamiento real de storage (cookies/Partitioned) dentro del iframe del host.~~ No es un hallazgo nuevo, es el único P0 abierto que el roadmap ya reconoce y que solo se cierra probando en el host real. Refuerza la prioridad de los hallazgos #2 y #7 de la tabla: si el storage falla, el guardado-que-miente y el borrado-en-lectura son justo lo que convierte ese fallo en pérdida de partidas.
 
 ---
 
@@ -270,7 +287,7 @@ El cluster de persistencia más el bug de inventario. Todo S/M, todo con consecu
 5. Guardado por chunks que propaga el fallo real (#7, M).
 6. **Test de round-trip de chunking** (#9, M): ancla los cinco anteriores y evita que se rompan al refactorizar.
 
-En paralelo, cerrar el P0 abierto: probar storage dentro del iframe del host (manual, no headless).
+~~En paralelo, cerrar el P0 abierto: probar storage dentro del iframe del host (manual, no headless).~~ ✅ **SUPERADO (2026-06-28):** ya no hay iframe; el save es `localStorage` top-level. Ese P0 deja de existir.
 
 ### P1 — próximas semanas
 
@@ -293,7 +310,57 @@ Lo ya documentado y diferido, que el modo standalone/co-op convierte de "manteni
 - Extraer `packages/shared/gridMath.ts` (incluyendo la copia de SaveSystem, que el item original no contempla): elimina la duplicación de rotación de celdas y desbloquea sus tests.
 - Rendimiento de fondo: olas en vertex shader, InstancedMesh para rocas/dunas (y luego árboles), presupuesto de sombras (1024 + frustum acotado), FBX→glTF cuando el salto se consolide.
 - Sustituir los `setTimeout` de sync por await de eventos reales, fichero a fichero.
-- Endurecer postMessage (allowlist de origin) y fijar la convención `textContent` para los campos que puedan volverse dinámicos.
+- ~~Endurecer postMessage (allowlist de origin)~~ ✅ **SUPERADO (2026-06-28):** sin puente host no hay `postMessage` que endurecer. Queda solo fijar la convención `textContent` para los campos que puedan volverse dinámicos.
 - Normalizar el casing de ficheros por tandas con validación en CI Linux.
 
 Fuera de las olas, parqueado con sign-off explícito: el versionado y la migración de saves en runtime. Es la pieza que faltará el día que el esquema cambie en serio, pero su cambio es sensible para la compatibilidad de partidas y ya tiene decisión de diferirlo.
+
+---
+
+## Pendiente tras la actualización (2026-06-28)
+
+Lista consolidada de lo que sigue **abierto** tras la salida del iframe y la migración a `localStorage`. Líneas verificadas sobre el código actual donde se indica; el resto conserva la referencia del 2026-06-27 (puede haber desfase tras la migración).
+
+### ✅ Ya resuelto (no volver a abrir)
+
+- Puente host de Rosebud retirado: `ChatManager.js`, `ImageGenerator.js`, `OGP.js`, `ProgressLogger.js`, `ScriptsLoader-Universal.js` borrados; `index.html` carga solo `src/main.js`. Cierra: validación de `event.origin`/`postMessage`, item P2 "endurecer postMessage", y el reenvío de `console.error` al padre.
+- Guardado migrado de cookies+chunking a una sola escritura en `localStorage`. Cierra: modelo de cookies/`Partitioned`, y el P0 de "verificar storage dentro del iframe" (ya no hay iframe).
+- PWA standalone top-level.
+- `rosieControls.ts` ya no existe (su entrada de "variables sin usar" decae).
+
+### P0 — integridad de datos (pendiente)
+
+1. `levelManager` → `this.gameInstance.buildingSystem.levelManager` (SaveSystem.ts:348, :1043).
+2. Quitar `deleteSave` del `catch` de `loadGameData`; devolver null y dejar reintentar (SaveSystem.ts:519).
+3. `try/catch` en `getSaveMetadata` (SaveSystem.ts:1218).
+4. `canAddItem` con relleno parcial; `addItem`/`moveItem` que fusionen lo que quepa (inventory.ts:67, 140, 152).
+5. **#7 reformulado:** `setLocalStorage` se traga el fallo (SaveSystem.ts:1247) y `saveGame` devuelve `true` igualmente (SaveSystem.ts:57→63). Que `setLocalStorage` devuelva boolean y `saveGame` propague el fallo.
+6. **#9 transformado:** test jsdom de round-trip del save completo (`save`→`load`, string idéntico, Unicode multibyte) **+ propagación de fallo de escritura**.
+
+### P1 — corrección, tipos accionables, quick wins
+
+- Borrado de muro entre niveles libera celdas del nivel equivocado (BuildingSystem.ts:1223).
+- Reparadores de JSON no destructivos: parsear primero, reparar solo si falla, sobre tokens (SaveSystem.ts:491, :506).
+- Divergencia de fallback `cellSize` 3.5 vs 1.0 (BuildingSystem.ts:692 vs SaveSystem.ts:1145).
+- Serializadores muertos `serializeTrees`/`serializeRocks` (SaveSystem.ts:191, :226).
+- Deuda de tipos ya accionable (migración terminada): sustituir los `any` "Ola 5/6" por las clases reales, tipar `window.gameInstance`, interfaz `GameApi` mínima, DebugUI usa `this.game`, hack de `ItemStack` resuelto con import directo.
+- Rendimiento barato: cachear meshes de árbol (TreeChoppingSystem.ts:139); cachear `meshesToTest` + excluir el agua del set de suelo (CharacterController.ts:336, CollisionSystem.ts:131).
+- Logger con niveles gateado por entorno: silenciar/enrutar los ~123 `console.error`/`warn` que sobreviven al build (la fuga al host ya está resuelta).
+- Tests baratos: `calculateBuildingLevel`↔`getLevelY`, `WallIntersectionHelper`, `FarmingSystem`.
+- Bordes: `LevelManager` con niveles negativos, clamp en `ItemStack.deserialize`, guarda `isRestoring`, `checkGroundCollision.collider` siempre `undefined`.
+
+### P2 — apuestas grandes (prerrequisitos del multijugador)
+
+- Trocear `BuildingSystem` (input/preview/hit-test) antes/junto al patrón de comandos.
+- Ciclo de vida simétrico: handlers nombrados / `AbortController`, `game.destroy()` completo con `renderer.dispose()`, `Environment.dispose()`, e implementar o borrar `hideStepDetectionVisualization` (DebugUI.destroy llama a un método inexistente).
+- Helpers compartidos `ModelLoader` y `AnimatedActor`.
+- Extraer `packages/shared/gridMath.ts` (incluida la copia de SaveSystem).
+- Rendimiento de fondo: olas en vertex shader, `InstancedMesh` rocas/dunas (luego árboles), presupuesto de sombras, FBX→glTF.
+- Sustituir los `setTimeout` de sync por await de eventos reales.
+- Fijar convención `textContent` para campos que puedan volverse dinámicos (la parte "endurecer postMessage" decae).
+- Normalizar casing de ficheros por tandas con CI Linux.
+- Mover el DOM de depuración de `player.ts` a DebugUI; extraer `DogDeliveryNotifier` en DogCompanion.
+
+### Parqueado con sign-off
+
+- Versionado y migración de saves en runtime.

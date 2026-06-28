@@ -34,8 +34,9 @@ reanudar sin perder el hilo.
   de prueba de `compass.js` → `compass.ts` con typecheck ✓, build (36 módulos) ✓, tests ✓.
   **El loop no debe reescribir imports**; solo `git mv`.
 - **`strict:true` es gratis para el código sin convertir** (ver arriba).
-- `index.html` carga el bundle por `src/main.js`; Vite reescribe esa entrada. Los scripts de
-  host (`/ChatManager.js`, etc.) son rutas absolutas a `public/` y **no** se migran.
+- `index.html` carga el bundle por `src/main.js`; Vite reescribe esa entrada. ~~Los scripts de
+  host (`/ChatManager.js`, etc.) son rutas absolutas a `public/` y **no** se migran.~~ ✅ **Superado
+  (2026-06-28):** los scripts host se **borraron** (commit `92037ee`); ya no había que migrarlos.
 
 ## Definition of Done (por iteración)
 
@@ -127,6 +128,6 @@ con strict. En ese punto el loop debe detenerse y no reprogramar otra iteración
 
 - El singleton global es `window.gameInstance`, no `window.game` (ver `CLAUDE.md`).
 - `three` está pineado a `0.160.0` exacto; `@types/three` debe coincidir.
-- No convertir a localStorage el `SaveSystem` (cookies con chunking por el contexto iframe).
+- ~~No convertir a localStorage el `SaveSystem` (cookies con chunking por el contexto iframe).~~ ✅ **Superado (2026-06-28):** al salir del iframe del playground, el `SaveSystem` **sí** se migró a `localStorage` (una sola escritura, sin chunking), commits `4a16f57`/`11befc6`/`b571f4d`. Este consejo ya no aplica.
 - Si `ResourceSystem`/`BuildingAnimations` resultan ser código muerto (sin importadores),
   anotarlo, pero convertirlos igual salvo decisión explícita de borrarlos.

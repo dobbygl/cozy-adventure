@@ -2,12 +2,12 @@
 // la lógica del juego: si el registro falla, el juego sigue siendo jugable (solo se pierde offline).
 //
 // Dos guards, ambos importantes:
-//   1. Embebido en iframe: este juego se exporta para correr dentro del iframe del host del
-//      playground (postMessage a window.parent). Un service worker registrado en un iframe del mismo
-//      origen serviría cache-first y dejaría al host fijado en un build viejo del juego ("¿por qué no
-//      se actualiza?"). La PWA solo tiene sentido en la página de nivel superior (la landing navega a
-//      /play/ con un enlace, no lo embebe; una PWA instalada arranca también top-level), así que
-//      registramos solo cuando no estamos dentro de un iframe.
+//   1. Nunca dentro de un iframe: el juego ya corre standalone (salió del iframe del host del
+//      playground), pero la guarda se mantiene por robustez. Un service worker registrado en un
+//      iframe del mismo origen serviría cache-first y dejaría a ese contenedor fijado en un build
+//      viejo ("¿por qué no se actualiza?"). La PWA solo tiene sentido en la página de nivel superior
+//      (la landing navega a /play/ con un enlace, no lo embebe; una PWA instalada arranca también
+//      top-level), así que registramos solo cuando no estamos dentro de un iframe.
 //   2. DEV: en desarrollo el SW cachearia los modulos servidos por Vite con cache-first, sirviendo
 //      codigo viejo y rompiendo el HMR. Si quedo uno de una sesion previa, lo desregistramos y
 //      limpiamos sus caches (auto-curado).

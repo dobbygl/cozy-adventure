@@ -20,7 +20,7 @@
 Cozy Adventure is a relaxed survival and building game set on a sunny low-poly island. Chop trees, gather resources, farm, build a home on a snapping grid, and explore with a friendly dog at your side. It is built with [Three.js](https://threejs.org/), written in TypeScript, and bundled with [Vite](https://vite.dev/), so the whole thing runs in a browser with no plugins.
 
 > [!NOTE]
-> This game was originally exported from an AI playground platform. It is designed to run **embedded in a host page inside an iframe** and talks to its host through `window.parent` `postMessage`. It also runs locally via the Vite dev server (`pnpm dev`).
+> This game was originally exported from the Rosebud AI playground platform, where it ran embedded in a host iframe and talked to its host through `window.parent` `postMessage`. That coupling has been **removed**: the game now runs **standalone, top-level** (Vite dev server and the GitHub Pages `/play` build) and is an installable **PWA**. The Rosebud host scripts and their `postMessage` bridges have been deleted.
 
 ## Features
 
@@ -134,7 +134,7 @@ cozy-adventure/
 
 `apps/game/index.html` loads `main.ts`, which constructs `Game` (`game.ts`) and drives the render loop via `requestAnimationFrame`. `Game` is the orchestrator: `init()` wires up the menu and save UI, while `startGame()` builds the 3D world and every gameplay system. Systems are composed through **constructor dependency injection** (collision, building, tree chopping, farming, inventory, saving), and the global game instance is exposed as `window.gameInstance`.
 
-The world and its colliders are built by `Environment`, tagged via `userData`, and read back by `CollisionSystem`. Saving is split by category (player, inventory, environment, buildings, world state) and persisted with chunking to fit storage limits inside the host iframe.
+The world and its colliders are built by `Environment`, tagged via `userData`, and read back by `CollisionSystem`. Saving is split by category (player, inventory, environment, buildings, world state) and persisted to `localStorage` at the top-level origin (a single write; the old cookie-chunking path was dropped when the game left the host iframe).
 
 Multiplayer is an **optional, server-authoritative** layer that leaves single-player untouched. The client `net/` layer (DOM-free, testable headlessly) connects to `@cozy/server`, regenerates the same world from the server's seed, relays the local avatar at ~15 Hz, and renders interpolated remote players. World mutations (chop, build, pickup) become **commands applied on the server's confirmed event**, so two clients never desync. The wire contract and the world-diff reducer are shared in `@cozy/shared`. See [`CLAUDE.md`](CLAUDE.md) for the details.
 
@@ -145,7 +145,7 @@ Multiplayer is an **optional, server-authoritative** layer that leaves single-pl
 
 **Co-op multiplayer is implemented** (specs 002 server + 003 client): an authoritative `@cozy/server` hosting one shared world per process, and a client that connects from the menu, regenerates the world from the server's seed, shows other players in real time, syncs building/chopping/gathering through server-validated commands, and reconnects after a drop. World generation is deterministic (seeded RNG in `packages/shared/rng.ts`) so every client builds the same island.
 
-Next: a browser playtest of the shared-world and reconnect flows, then standalone hosting (outside the playground iframe, on self-managed AWS). See `docs/PROPUESTA-MULTIJUGADOR.md` for the original direction and `apps/server/README.md` for self-hosting.
+The client already runs standalone (outside the playground iframe). Next: a browser playtest of the shared-world and reconnect flows, then self-managed AWS hosting for the server. See `docs/PROPUESTA-MULTIJUGADOR.md` for the original direction and `apps/server/README.md` for self-hosting.
 
 ## Resources
 
