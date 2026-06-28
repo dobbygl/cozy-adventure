@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for working on **Cozy Adventure**. It is a TypeScript (strict) ESM project bundled with Vite and built on Three.js. Keep the toolchain green and commit messages consistent.
+Thanks for working on **Cozy Adventure**. It is a TypeScript (strict) ESM **pnpm monorepo** (`@cozy/game` client on Three.js + Vite, `@cozy/server` multiplayer server, `@cozy/shared` kernel). Use pnpm, not npm. Keep the toolchain green and commit messages consistent.
 
 For architecture notes, conventions, and non-obvious gotchas, see [`CLAUDE.md`](CLAUDE.md).
 
@@ -9,10 +9,10 @@ For architecture notes, conventions, and non-obvious gotchas, see [`CLAUDE.md`](
 Run the same gates CI runs (`.github/workflows/ci.yml`) and keep them green:
 
 ```bash
-npm run lint        # ESLint (lint:fix autofixes; format / format:check use Prettier)
-npm run typecheck   # tsc -p tsconfig.json (strict, noEmit)
-npm run test        # Vitest run
-npm run build       # production build to dist/
+pnpm -r run lint        # ESLint across workspaces (lint:fix autofixes; Prettier via format)
+pnpm -r run typecheck   # tsc strict, noEmit, every workspace
+pnpm -r run test        # Vitest run (game + server)
+pnpm -r run build       # build every workspace (game via Vite, server via tsup)
 ```
 
 ## Commit messages

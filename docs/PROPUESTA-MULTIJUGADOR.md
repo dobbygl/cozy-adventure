@@ -1,5 +1,7 @@
 # Propuesta: servidor multijugador para "cozy-adventure"
 
+> **Estado (2026-06-28): IMPLEMENTADO y mergeado a `main`.** Esta propuesta se ejecutó como spec 002 (servidor autoritativo, `@cozy/server`) y spec 003 (refactor del cliente, capa `apps/game/src/net/`): P1 presencia/relay, P2 mundo compartido por comandos (con el bucle recurso→inventario cerrado vía `inventory_delta`), P3 reconexión y teardown simétrico. Lo verificado es headless + un playtest de P1; pendiente el playtest navegador de P2/P3 y el despliegue standalone en AWS. Este documento se conserva como la dirección de diseño original; el detalle vive en `specs/002-multiplayer-server/` y `specs/003-multiplayer-client/`.
+
 ## Resumen ejecutivo
 
 El encargo es implementar multijugador. Antes de diseñar nada conviene fijar una verdad incómoda: el servidor es la parte fácil. El coste real está en el cliente, que hoy es un juego monolocal sin una sola línea de red, con física cliente-autoritativa, generación de mundo no determinista y entidades sin identidad estable. Montar un proceso Node que acepte WebSockets se hace en una tarde. Que el juego que ya existe pueda hablar con él sin reescribirse a medias es el trabajo de verdad.
