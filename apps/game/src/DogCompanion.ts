@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CompanionAnimator } from './companion/CompanionAnimator.js';
+import { CompanionPhysics } from './companion/CompanionPhysics.js';
 
 export class DogCompanion {
   scene: THREE.Scene;
@@ -8,15 +9,12 @@ export class DogCompanion {
   // Assigned in load() (or its fallback); always present by the time AI methods run.
   mesh!: THREE.Object3D;
   animator!: CompanionAnimator;
+  physics: CompanionPhysics;
   followDistance: number;
   minFollowDistance: number;
   wanderRadius: number;
   speed: number;
   rotationSpeed: number;
-  groundLevel: number;
-  gravity: number;
-  velocity: THREE.Vector3;
-  isOnGround: boolean;
   state: string;
   target: any;
   wanderTarget: THREE.Vector3 | null;
@@ -42,13 +40,15 @@ export class DogCompanion {
     this.wanderRadius = 5;
     this.speed = 5;
     this.rotationSpeed = 8;
-    
-    // Ground collision properties
-    this.groundLevel = 0;
-    this.gravity = -15;
-    this.velocity = new THREE.Vector3();
-    this.isOnGround = false;
-    
+
+    // Gravity + ground following. The ground collider is resolved lazily through
+    // a getter so detection tolerates the collision system not existing yet and
+    // being swapped (preserves the old per-frame window.gameInstance lookup).
+    // TODO(phase 7): inject this provider instead of reading the global here.
+    this.physics = new CompanionPhysics(
+      () => (window as any).gameInstance?.collisionSystem ?? null,
+    );
+
     // Behavior states
     this.state = 'following'; // 'following', 'wandering', 'fetching', 'idle'
     this.target = null;
@@ -125,7 +125,7 @@ export class DogCompanion {
     this.animator.update(deltaTime);
     
     // Apply gravity and ground collision
-    this.updatePhysics(deltaTime);
+    this.physics.update(this.mesh, deltaTime);
     
     // Update timers
     this.wanderTimer -= deltaTime;
@@ -186,47 +186,6 @@ export class DogCompanion {
       this.barkCooldown = Math.random() * 10 + 5; // 5-15 seconds
     }
   }
-  updatePhysics(deltaTime: number): void {
-    // Use collision system for proper ground detection if available
-    const gameInstance = (window as any).gameInstance;
-    if (gameInstance?.collisionSystem) {
-      const groundCheck = gameInstance.collisionSystem.checkGroundCollision(
-        this.mesh.position, 
-        1.0, // character height
-        0.1  // ray offset
-      );
-      
-      if (groundCheck.hasCollision) {
-        // Set dog position to ground height
-        this.mesh.position.y = groundCheck.groundHeight;
-        this.velocity.y = 0;
-        this.isOnGround = true;
-      } else {
-        // Apply gravity if no ground found
-        if (!this.isOnGround) {
-          this.velocity.y += this.gravity * deltaTime;
-        }
-        
-        // Apply vertical velocity
-        this.mesh.position.y += this.velocity.y * deltaTime;
-        
-        // Fallback ground level check
-        if (this.mesh.position.y <= this.groundLevel) {
-          this.mesh.position.y = this.groundLevel;
-          this.velocity.y = 0;
-          this.isOnGround = true;
-        } else {
-          this.isOnGround = false;
-        }
-      }
-    } else {
-      // Fallback: simple ground level enforcement
-      this.mesh.position.y = Math.max(this.mesh.position.y, this.groundLevel);
-      this.velocity.y = 0;
-      this.isOnGround = true;
-    }
-  }
-
   updateFollowing(
     deltaTime: number,
     playerPosition: THREE.Vector3,
