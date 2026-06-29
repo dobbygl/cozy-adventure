@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CompanionAnimator } from './companion/CompanionAnimator.js';
 import { CompanionPhysics } from './companion/CompanionPhysics.js';
+import { CompanionLocomotion } from './companion/CompanionLocomotion.js';
 
 export class DogCompanion {
   scene: THREE.Scene;
@@ -10,11 +11,11 @@ export class DogCompanion {
   mesh!: THREE.Object3D;
   animator!: CompanionAnimator;
   physics: CompanionPhysics;
+  locomotion: CompanionLocomotion;
   followDistance: number;
   minFollowDistance: number;
   wanderRadius: number;
   speed: number;
-  rotationSpeed: number;
   state: string;
   target: any;
   wanderTarget: THREE.Vector3 | null;
@@ -39,7 +40,7 @@ export class DogCompanion {
     this.minFollowDistance = 1.5;
     this.wanderRadius = 5;
     this.speed = 5;
-    this.rotationSpeed = 8;
+    this.locomotion = new CompanionLocomotion({ rotationSpeed: 8 });
 
     // Gravity + ground following. The ground collider is resolved lazily through
     // a getter so detection tolerates the collision system not existing yet and
@@ -194,24 +195,9 @@ export class DogCompanion {
   ): void {
     if (distanceToPlayer > this.followDistance) {
       // Move towards player
-      const direction = new THREE.Vector3()
-        .subVectors(playerPosition, dogPosition)
-        .normalize();
-      
-      // Only move horizontally, let physics handle vertical movement
-      const movement = new THREE.Vector3(
-        direction.x * this.speed * deltaTime,
-        0,
-        direction.z * this.speed * deltaTime
-      );
-      this.mesh.position.add(movement);
-      
-      // Play walk animation when moving
+      this.locomotion.moveToward(this.mesh, playerPosition, this.speed, deltaTime);
       this.animator.playWalk();
-      
-      // Rotate to face movement direction
-      this.rotateTowards(direction, deltaTime);
-      
+
     } else if (distanceToPlayer < this.minFollowDistance) {
       // Too close, maybe wander or sit
       if (Math.random() < 0.1 && this.wanderCooldown <= 0) {
@@ -247,22 +233,9 @@ export class DogCompanion {
     // Move towards wander target
     const distanceToTarget = dogPosition.distanceTo(this.wanderTarget!);
     if (distanceToTarget > 0.5) {
-      const direction = new THREE.Vector3()
-        .subVectors(this.wanderTarget!, dogPosition)
-        .normalize();
-      
-      // Only move horizontally during wandering
-      const movement = new THREE.Vector3(
-        direction.x * this.speed * 0.5 * deltaTime,
-        0,
-        direction.z * this.speed * 0.5 * deltaTime
-      );
-      this.mesh.position.add(movement);
-      
-      // Play walk animation when wandering
+      // Wander at half speed
+      this.locomotion.moveToward(this.mesh, this.wanderTarget!, this.speed * 0.5, deltaTime);
       this.animator.playWalk();
-      
-      this.rotateTowards(direction, deltaTime);
     } else {
       // Reached target, maybe go back to following
       this.animator.playIdle();
@@ -306,22 +279,9 @@ export class DogCompanion {
       const distanceToItem = dogPosition.distanceTo(itemPosition);
       
       if (distanceToItem > 0.8) {
-        const direction = new THREE.Vector3()
-          .subVectors(itemPosition, dogPosition)
-          .normalize();
-        
-        // Only move horizontally when fetching
-        const movement = new THREE.Vector3(
-          direction.x * this.speed * 1.2 * deltaTime,
-          0,
-          direction.z * this.speed * 1.2 * deltaTime
-        );
-        this.mesh.position.add(movement);
-        
-        // Play walk animation when fetching
+        // Sprint to the item (1.2x speed)
+        this.locomotion.moveToward(this.mesh, itemPosition, this.speed * 1.2, deltaTime);
         this.animator.playWalk();
-        
-        this.rotateTowards(direction, deltaTime);
       } else {
         // Reached item, "pick it up"
         console.log(`Dog reached item ${this.fetchedItems.length + 1}/${this.maxCarryCapacity} - storing item data for delivery`);
@@ -358,22 +318,9 @@ export class DogCompanion {
       const distanceToPlayer = dogPosition.distanceTo(playerPosition);
       
       if (distanceToPlayer > 1.8) {
-        const direction = new THREE.Vector3()
-          .subVectors(playerPosition, dogPosition)
-          .normalize();
-        
-        // Only move horizontally when returning to player
-        const movement = new THREE.Vector3(
-          direction.x * this.speed * deltaTime,
-          0,
-          direction.z * this.speed * deltaTime
-        );
-        this.mesh.position.add(movement);
-        
-        // Play walk animation when returning to player
+        // Carry the haul back to the player
+        this.locomotion.moveToward(this.mesh, playerPosition, this.speed, deltaTime);
         this.animator.playWalk();
-        
-        this.rotateTowards(direction, deltaTime);
       } else {
         // Close enough to player - deliver items
         console.log(`🎉 Dog close enough to deliver! Items to deliver: ${this.fetchedItems.length}`);
@@ -777,22 +724,6 @@ export class DogCompanion {
         console.warn('⚠️ Delayed inventory update error:', error);
       }
     }, 50);
-  }
-
-  rotateTowards(direction: THREE.Vector3, deltaTime: number): void {
-    if (direction.length() > 0) {
-      const targetRotation = Math.atan2(direction.x, direction.z);
-      const currentRotation = this.mesh.rotation.y;
-      
-      let rotationDiff = targetRotation - currentRotation;
-      
-      // Normalize rotation difference to [-π, π]
-      while (rotationDiff > Math.PI) rotationDiff -= 2 * Math.PI;
-      while (rotationDiff < -Math.PI) rotationDiff += 2 * Math.PI;
-      
-      const rotationStep = Math.sign(rotationDiff) * Math.min(Math.abs(rotationDiff), this.rotationSpeed * deltaTime);
-      this.mesh.rotation.y += rotationStep;
-    }
   }
 
   bark() {
