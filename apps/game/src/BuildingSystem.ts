@@ -66,6 +66,13 @@ export class BuildingSystem {
    * materialize the building, instead of building locally. Null = local mode.
    */
   requestPlace: ((cmd: PlaceBuildingRequest) => void) | null = null;
+  /**
+   * In multiplayer, Game sets this to emit a remove_building command. When present,
+   * demolition is server-authoritative: emit the command and let the confirmed
+   * building_removed event remove the building on every client, instead of breaking it
+   * locally. Null = local mode (the wall is broken directly, with the resource refund).
+   */
+  requestRemove: ((networkId: number) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -1134,7 +1141,7 @@ updateLevelReferences() {
                   color: ${this.selectedBuildObject === key ? '#8B4513' : '#DEB887'};
                   font-size: 12px;
                   opacity: 0.8;
-                ">${obj.cellSize === 3.0 ? '9 cells (3x3)' : obj.cellSize + ' cell' + (obj.cellSize !== 1 ? 's' : '')}</div>
+                ">${obj.cellSize.width}x${obj.cellSize.height} cells</div>
               </div>
               
               ${this.selectedBuildObject === key ? `
@@ -1307,16 +1314,33 @@ updateLevelReferences() {
   }
   breakObject(objectToBreak: THREE.Object3D) {
     if (!objectToBreak || !objectToBreak.userData.isBreakable) return;
-    
+
     // CRITICAL: Double-check that wall is not already animating
     if (this.animatingWalls.has(objectToBreak)) {
       console.log('⚠️ Object is already being broken - preventing duplicate break');
       return;
     }
-    
+
+    // Multiplayer: demolition is server-authoritative. Emit a remove_building command and
+    // let the confirmed building_removed event remove it on every client (parity with
+    // placement). Return BEFORE touching anything local: the server owns the world map and
+    // broadcasts the removal, and returning resources here would grant wood the server
+    // never charged back, desyncing the inventory. (No local refund in network mode — a
+    // documented v1 divergence; the server grants none either.) In local mode requestRemove
+    // is null and we break directly below.
+    if (this.requestRemove) {
+      const networkId = objectToBreak.userData.networkId;
+      if (typeof networkId === 'number') {
+        this.requestRemove(networkId);
+      } else {
+        console.warn('⚠️ Cannot remove a building without a networkId in multiplayer', objectToBreak);
+      }
+      return;
+    }
+
     // Return half of the resources used to build this object
     this.returnResources(objectToBreak);
-    
+
     // Start break animation instead of immediate removal
     this.playBreakAnimation(objectToBreak);
   }
@@ -1696,14 +1720,18 @@ updateLevelReferences() {
 
   /**
    * Remove a server-confirmed building by networkId (multiplayer onBuildingRemoved).
-   * Defensive: the v1 server emits no building_removed command, but reconnect
-   * snapshots and future removals route here.
+   * Routes both the live demolition path (a peer or this client ran remove_building) and
+   * reconnect snapshots through here. The exact inverse of materializeNetworkBuilding ->
+   * restoreBuilding, which adds to builtWalls, cellToWallMap/occupiedCells AND the
+   * objectsRegistry — so all three must be undone, or the registry leaks a freed mesh
+   * (skewing save serialization and per-type counts).
    */
   removeNetworkBuilding(networkId: number): void {
     const wall = this.builtWalls.find((w) => w.userData.networkId === networkId);
     if (!wall) return;
     this.scene.remove(wall);
     this.collisionSystem?.removeCollider(wall);
+    this.objectsRegistry.removeBuiltObject(wall);
     this.builtWalls = this.builtWalls.filter((w) => w !== wall);
     for (const [key, mapped] of this.cellToWallMap) {
       if (mapped === wall) {

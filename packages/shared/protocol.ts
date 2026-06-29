@@ -23,8 +23,12 @@ import type { ResourceNodeKind } from './resourceNodes';
  * v4: harvest_node carries the node's `position` so the server can spawn the
  * harvested items as ground drops (parity with single-player) instead of granting
  * them straight to the inventory; the apple_tree node kind drops apples too.
+ * v5: remove_building command — a client asks the server to demolish a building by
+ * networkId; the server emits the existing building_removed diff (which frees the
+ * whole footprint) to EVERY client, so demolition is server-authoritative and
+ * apply-on-confirm, just like placement (no client-side break in network mode).
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /**
  * Wire-contract id-space split. Base world entities (the seeded trees) are
@@ -60,7 +64,12 @@ export type WorldCommand =
       position: Vec3;
     }
   | { type: 'pickup_drop'; networkId: number }
-  | { type: 'drop_item'; itemId: string; quantity: number; position: Vec3 };
+  | { type: 'drop_item'; itemId: string; quantity: number; position: Vec3 }
+  // Demolish a building by its server-assigned networkId. The server owns the world
+  // map, so removal must round-trip through it: it emits building_removed (freeing the
+  // footprint) to every client. No `position` — the server already knows where the
+  // building is and range-checks against that.
+  | { type: 'remove_building'; networkId: number };
 
 export type WorldCommandType = WorldCommand['type'];
 

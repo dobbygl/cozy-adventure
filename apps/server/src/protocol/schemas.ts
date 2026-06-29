@@ -33,6 +33,7 @@ const worldCommand = z.discriminatedUnion('type', [
     quantity: z.number().int().positive(),
     position: vec3,
   }),
+  z.object({ type: z.literal('remove_building'), networkId: z.number().int() }),
 ]);
 
 const joinMessage = z.object({

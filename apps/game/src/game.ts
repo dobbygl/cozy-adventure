@@ -1126,11 +1126,13 @@ addSampleItemsToInventory() {
         this.buildingSystem.setPlayer(this.player);
       }
 
-      // Multiplayer: route placement through the server (apply-on-confirm). In local
-      // mode requestPlace stays null and building keeps its existing behavior.
+      // Multiplayer: route placement AND demolition through the server (apply-on-confirm).
+      // In local mode both stay null and building keeps its existing client-side behavior.
       if (this.network) {
         this.buildingSystem.requestPlace = (cmd) =>
           this.network?.sendCommand({ type: 'place_building', ...cmd });
+        this.buildingSystem.requestRemove = (networkId) =>
+          this.network?.sendCommand({ type: 'remove_building', networkId });
       }
 
       // Wire the touch build controls to the building system (mirrors V/R/X/C).

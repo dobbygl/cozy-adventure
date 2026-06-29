@@ -7,7 +7,7 @@ import {
   applyWorldDiff,
   type WorldDerivedState,
 } from '@cozy/shared';
-import type { WorldDocument, WorldSnapshot, WorldDiff, DropState, BuildingCell } from '@cozy/shared';
+import type { WorldDocument, WorldSnapshot, WorldDiff, DropState, BuildingCell, BuildingState } from '@cozy/shared';
 
 /**
  * The canonical, server-authoritative world: seed + an ordered list of diffs.
@@ -97,6 +97,10 @@ export class World {
 
   getDrop(networkId: number): DropState | undefined {
     return this.derived.drops.get(networkId);
+  }
+
+  getBuilding(networkId: number): BuildingState | undefined {
+    return this.derived.buildings.get(networkId);
   }
 
   listDrops(): DropState[] {
