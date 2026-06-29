@@ -605,10 +605,10 @@ addSampleItemsToInventory() {
     if (!this.nearestPickupableItem || !this.player || !this.inventory) return;
 
     // Multiplayer: picking up is server-authoritative. Emit pickup_drop and let the
-    // confirmed drop_removed event remove the drop; do not pick up locally. The item
-    // is granted to the server-side inventory; reflecting server-authoritative
-    // inventory grants on the client is a known v1 gap (needs an inventory-sync
-    // message). In local mode this branch is skipped.
+    // confirmed drop_removed event remove the drop; do not pick up locally. The server
+    // grants the item and reports it back as an inventory_delta, which applyInventoryDelta
+    // reflects in the local inventory (this is how harvested wood/apples, which now land
+    // on the ground as drops, end up in the bag). In local mode this branch is skipped.
     if (this.network) {
       const networkId = this.nearestPickupableItem.userData.networkId;
       if (typeof networkId === 'number') {
@@ -1182,11 +1182,17 @@ addSampleItemsToInventory() {
     }
 
     // Multiplayer: route each axe swing through the server as a harvest_node hit
-    // (apply-on-confirm). In local mode requestHarvest stays null and chopping keeps
-    // its existing client-side multi-hit behavior.
+    // (apply-on-confirm). The node's world position rides along so the server can spawn
+    // the yielded wood/apples as ground drops there. In local mode requestHarvest stays
+    // null and chopping keeps its existing client-side multi-hit behavior.
     if (this.network) {
-      this.treeChoppingSystem.requestHarvest = (networkId, nodeKind) =>
-        this.network?.sendCommand({ type: 'harvest_node', networkId, nodeKind });
+      this.treeChoppingSystem.requestHarvest = (networkId, nodeKind, position) =>
+        this.network?.sendCommand({
+          type: 'harvest_node',
+          networkId,
+          nodeKind,
+          position: { x: position.x, y: position.y, z: position.z },
+        });
     }
 
     console.log('Tree chopping system initialized with player reference and item drop system');

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { RESOURCE_NODES, totalYieldFor, BUILDABLES } from '@cozy/shared';
 import { startTestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
+import { fellAndGatherWood } from '../harness/feedWood';
 import { MemoryStore } from '../../src/persistence/MemoryStore';
 import { countItem } from '../../src/world/inventory';
 
@@ -14,21 +15,15 @@ describe('P2 persistence', () => {
     const { c: a, joined: ja } = await joinClient(ctxA.url);
     const { playerId, token, seed } = ja;
 
-    // Fell a tree over its full health, summing the per-hit wood grants.
-    const hits = RESOURCE_NODES.tree.maxHealth;
-    let woodGained = 0;
-    for (let i = 0; i < hits; i++) {
-      a.send({ t: 'command', seq: i + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
-      await a.waitFor('event');
-      woodGained += (await a.waitFor('inventory_delta')).delta;
-    }
+    // Fell a tree and pick up the wood it dropped on the ground (parity with single-player).
+    const { seq, wood: woodGained } = await fellAndGatherWood(a, 5);
     // Network mode yields exactly single-player's per-tree total (13).
     expect(woodGained).toBe(totalYieldFor(RESOURCE_NODES.tree));
 
     // Build a wall (server derives the cells and consumes wood). 13 gained - 10 cost = 3.
     a.send({
       t: 'command',
-      seq: hits + 1,
+      seq: seq + 1,
       cmd: { type: 'place_building', registryType: 'wall', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, level: 0 },
     });
     const buildEv = await a.waitFor('event');

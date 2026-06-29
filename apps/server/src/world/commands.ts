@@ -7,7 +7,13 @@ import type {
   BuildingState,
   DropState,
 } from '@cozy/shared';
-import { getResourceNode, getBuildable, buildingFootprintCells, buildingGridCoord } from '@cozy/shared';
+import {
+  getResourceNode,
+  secondaryYieldForHit,
+  getBuildable,
+  buildingFootprintCells,
+  buildingGridCoord,
+} from '@cozy/shared';
 import type { World } from './World';
 import { addItem, removeItem } from './inventory';
 import { distanceXZ } from './geometry';
@@ -33,7 +39,18 @@ export interface CommandContext {
 }
 
 export type CommandOutcome =
-  | { ok: true; diff: WorldDiff; inventoryDelta?: { itemId: string; delta: number } }
+  | {
+      ok: true;
+      /** The primary diff (e.g. the node hit, the building placed). */
+      diff: WorldDiff;
+      /**
+       * Further diffs produced by the same command, broadcast right after `diff` in
+       * order (e.g. harvesting spawns the ground drops it yields). The reducer has
+       * already recorded them, so this is only the broadcast list.
+       */
+      extraDiffs?: WorldDiff[];
+      inventoryDelta?: { itemId: string; delta: number };
+    }
   | { ok: false; reason: RejectReason };
 
 function inReach(ctx: CommandContext, target: Vec3, max: number = MAX_REACH): boolean {
@@ -58,13 +75,18 @@ export function applyCommand(ctx: CommandContext, cmd: WorldCommand, now: number
 
 /**
  * One hit on a harvestable resource node (tree, future rock/ore). Server-authoritative
- * health: each hit removes `damagePerHit`, granting `yieldPerHit` (plus the felling
- * bonus on the depleting hit), so a tree falls after `maxHealth` hits with the same
- * total yield as single-player. Emits `node_damaged` while alive, `node_depleted` on
- * the final hit; the per-hit grant is reported via inventoryDelta only when it fit.
+ * health: each hit removes `damagePerHit` and yields `yieldPerHit` of the primary item
+ * (plus the felling bonus on the depleting hit) and any secondary yield (apples from an
+ * apple tree), so a tree falls after `maxHealth` hits with the same total as
+ * single-player. Emits `node_damaged` while alive, `node_depleted` on the final hit.
  *
- * No range check: the server doesn't know base-node positions (they are client-side
- * and seed-deterministic). It only tracks health and arbitrates over-harvest. The
+ * The yield drops to the GROUND, not into the inventory (parity with single-player):
+ * each yield bundle becomes a `drop_spawned` diff at the node's position, which every
+ * client materializes and any player can then pick up. The server has no base-node
+ * positions of its own (they are client-side and seed-deterministic), so the command
+ * supplies `position`.
+ *
+ * No reach check on that position: the server arbitrates only health/over-harvest. The
  * node kind is client-declared (the client tags each mesh); for base nodes the server
  * trusts it, exactly as it already trusts the chop target — a v1 simplification.
  */
@@ -80,6 +102,7 @@ function harvestNode(
   const current = ctx.world.nodeHealth(cmd.networkId) ?? def.maxHealth;
   const remaining = current - def.damagePerHit;
   const depleted = remaining <= 0;
+  const hitIndex = Math.floor((def.maxHealth - current) / def.damagePerHit);
 
   const diff: WorldDiff = depleted
     ? { type: 'node_depleted', networkId: cmd.networkId, nodeKind: def.kind, byPlayerId: ctx.player.playerId, at: now }
@@ -93,14 +116,49 @@ function harvestNode(
       };
   ctx.world.recordDiff(diff);
 
-  // Per-hit yield, plus the felling bonus on the depleting hit. Best-effort: a full
-  // inventory doesn't undo the hit. addItem is all-or-nothing, so only report the
-  // delta when it actually fit, or the client would gain items authority never granted.
-  const amount = def.yieldPerHit + (depleted ? def.yieldBonusOnDeplete : 0);
-  const granted = addItem(ctx.player.inventory, def.yieldItemId, amount);
-  return granted
-    ? { ok: true, diff, inventoryDelta: { itemId: def.yieldItemId, delta: amount } }
-    : { ok: true, diff };
+  // Drop the yield on the ground (one bundle per item kind), like single-player. Primary
+  // (wood) every hit plus the felling bonus; secondary (apples) on the early hits, capped.
+  const extraDiffs: WorldDiff[] = [];
+  const woodAmount = def.yieldPerHit + (depleted ? def.yieldBonusOnDeplete : 0);
+  if (woodAmount > 0) {
+    extraDiffs.push(spawnDrop(ctx, def.yieldItemId, woodAmount, cmd.position, hitIndex, 0, now));
+  }
+  const secondary = secondaryYieldForHit(def, current);
+  if (secondary > 0 && def.secondaryYield) {
+    extraDiffs.push(spawnDrop(ctx, def.secondaryYield.itemId, secondary, cmd.position, hitIndex, 1, now));
+  }
+  return { ok: true, diff, extraDiffs };
+}
+
+/** Lift drops clear of the ground and fan successive ones out so they don't stack/z-fight. */
+function dropOffset(base: Vec3, hitIndex: number, lane: number): Vec3 {
+  // Deterministic (no RNG): the angle is baked into the recorded diff, so replay agrees.
+  // `lane` separates the wood pile from the apple pile; `hitIndex` spreads repeated hits.
+  const angle = hitIndex * 1.1 + lane * Math.PI;
+  const radius = 0.7;
+  return { x: base.x + Math.cos(angle) * radius, y: base.y + 0.8, z: base.z + Math.sin(angle) * radius };
+}
+
+/** Allocate, record, and return a ground-drop diff for `quantity` of `itemId`. */
+function spawnDrop(
+  ctx: CommandContext,
+  itemId: string,
+  quantity: number,
+  base: Vec3,
+  hitIndex: number,
+  lane: number,
+  now: number
+): WorldDiff {
+  const entity: DropState = {
+    networkId: ctx.world.allocateNetworkId(),
+    itemId,
+    quantity,
+    position: dropOffset(base, hitIndex, lane),
+    spawnedAt: now,
+  };
+  const diff: WorldDiff = { type: 'drop_spawned', entity, at: now };
+  ctx.world.recordDiff(diff);
+  return diff;
 }
 
 /**

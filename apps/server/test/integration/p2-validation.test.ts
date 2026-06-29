@@ -26,12 +26,15 @@ describe('P2 command validation (rejection without mutation)', () => {
     const { c: far } = await joinClient(ctx.url);
     await dropper.waitFor('peer_joined');
 
-    // dropper gains wood and drops it at the origin (no position reported -> no range check).
-    dropper.send({ t: 'command', seq: 1, cmd: { type: 'harvest_node', networkId: 1, nodeKind: 'tree' } });
-    await dropper.waitFor('event');
-    dropper.send({ t: 'command', seq: 2, cmd: { type: 'drop_item', itemId: 'wood', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
-    const spawn = await dropper.waitFor('event');
-    const networkId = spawn.diff.type === 'drop_spawned' ? spawn.diff.entity.networkId : -1;
+    // dropper harvests a tree at the origin: its wood lands on the ground there as a drop
+    // (no position reported -> dropper itself is not range-checked).
+    dropper.send({
+      t: 'command',
+      seq: 1,
+      cmd: { type: 'harvest_node', networkId: 1, nodeKind: 'tree', position: { x: 0, y: 0, z: 0 } },
+    });
+    const spawn = (await dropper.collect('event', 150)).find((e) => e.diff.type === 'drop_spawned');
+    const networkId = spawn && spawn.diff.type === 'drop_spawned' ? spawn.diff.entity.networkId : -1;
 
     // far's FIRST avatar_state may be anywhere (sanity only checks deltas). Place it
     // far away, then try to grab the origin drop. WS messages are ordered, so the

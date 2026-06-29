@@ -10,7 +10,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 /** Send enough harvest hits to fell a base tree (depletes it). */
 const TREE_HITS = RESOURCE_NODES.tree.maxHealth;
 function fellTree(net: NetworkSystem, networkId: number): void {
-  for (let i = 0; i < TREE_HITS; i++) net.sendCommand({ type: 'harvest_node', networkId, nodeKind: 'tree' });
+  for (let i = 0; i < TREE_HITS; i++)
+    net.sendCommand({ type: 'harvest_node', networkId, nodeKind: 'tree', position: { x: 0, y: 0, z: 0 } });
 }
 
 // Headless: NetworkSession's join -> presence -> relay orchestration is verified
