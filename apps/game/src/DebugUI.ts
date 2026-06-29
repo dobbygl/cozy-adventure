@@ -465,8 +465,7 @@ export class DebugUI {
     // Update debug visualizations that need to track moving objects
     if (this.isVisible) {
       this.updateDogDetectionRange();
-      // NOTE: this method is not defined on DebugUI (pre-existing latent bug); preserved as-is.
-      (this as any).updateStepDetectionVisualization();
+      this.updateStepVisual();
     }
   }
   
@@ -556,8 +555,7 @@ export class DebugUI {
   destroy() {
     this.hideTreePivotDots();
     this.hideDogDetectionRange();
-    // NOTE: this method is not defined on DebugUI (pre-existing latent bug); preserved as-is.
-    (this as any).hideStepDetectionVisualization();
+    this.removeStepVisual();
     console.log('Debug UI destroyed');
   }
 }
