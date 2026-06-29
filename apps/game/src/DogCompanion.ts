@@ -4,6 +4,10 @@ import { CompanionAnimator } from './companion/CompanionAnimator.js';
 import { CompanionPhysics } from './companion/CompanionPhysics.js';
 import { CompanionLocomotion } from './companion/CompanionLocomotion.js';
 import { CarryVisual } from './companion/fetch/CarryVisual.js';
+import { DeliveryService } from './companion/fetch/DeliveryService.js';
+import { findNearestDroppedItem, hasItemBeenDroppedLongEnough } from './companion/fetch/fetchQueries.js';
+import type { DroppedItemsPort } from './companion/ports.js';
+import { companionUiPort, droppedItemsPort, inventoryPort } from './companion/gameInstancePorts.js';
 
 export class DogCompanion {
   scene: THREE.Scene;
@@ -30,6 +34,8 @@ export class DogCompanion {
   returnToPlayer: boolean;
   // The items the dog visibly carries in its mouth (assigned in load()).
   carry!: CarryVisual;
+  delivery: DeliveryService;
+  droppedItems: DroppedItemsPort;
   loader: GLTFLoader;
 
   constructor(scene: THREE.Scene, player: any) {
@@ -43,13 +49,15 @@ export class DogCompanion {
     this.speed = 5;
     this.locomotion = new CompanionLocomotion({ rotationSpeed: 8 });
 
-    // Gravity + ground following. The ground collider is resolved lazily through
-    // a getter so detection tolerates the collision system not existing yet and
-    // being swapped (preserves the old per-frame window.gameInstance lookup).
-    // TODO(phase 7): inject this provider instead of reading the global here.
-    this.physics = new CompanionPhysics(
-      () => (window as any).gameInstance?.collisionSystem ?? null,
-    );
+    // All access to the rest of the game goes through ports, resolved lazily via
+    // this getter so each frame sees the live systems (the collision system,
+    // inventory, etc. may be created after the dog and swapped at runtime — the
+    // late-binding the old per-frame window.gameInstance lookups relied on).
+    // TODO(phase 7): inject the game systems instead of reading the global here.
+    const getGame = () => (window as any).gameInstance;
+    this.physics = new CompanionPhysics(() => getGame()?.collisionSystem ?? null);
+    this.delivery = new DeliveryService(inventoryPort(getGame), companionUiPort(getGame));
+    this.droppedItems = droppedItemsPort(getGame, scene);
 
     // Behavior states
     this.state = 'following'; // 'following', 'wandering', 'fetching', 'idle'
@@ -138,10 +146,10 @@ export class DogCompanion {
     // ALWAYS check for items to fetch - Enhanced for multiple items with REALLY FAR detection
     // Only pick up items that have been on the ground for at least 15 seconds
     if (droppedItems.length > 0 && this.fetchedItems.length < this.maxCarryCapacity) {
-      const nearestItem = this.findNearestDroppedItem(droppedItems, dogPosition);
-      if (nearestItem && this.validateItemExists(nearestItem, droppedItems) && 
+      const nearestItem = findNearestDroppedItem(droppedItems, dogPosition);
+      if (nearestItem && this.validateItemExists(nearestItem, droppedItems) &&
           dogPosition.distanceTo(nearestItem.position) < 150 && !this.isAlreadyTargeted(nearestItem) &&
-          this.hasItemBeenDroppedLongEnough(nearestItem)) {
+          hasItemBeenDroppedLongEnough(nearestItem, Date.now())) {
         
         // If not already fetching, start fetching
         if (this.state !== 'fetching') {
@@ -156,8 +164,8 @@ export class DogCompanion {
     // Additional check: Continue scanning for more items if dog isn't at capacity and isn't returning
     if (this.state === 'fetching' && !this.returnToPlayer && this.fetchedItems.length < this.maxCarryCapacity) {
       const additionalItem = this.findNextFetchTarget(droppedItems, dogPosition);
-      if (additionalItem && this.validateItemExists(additionalItem, droppedItems) && 
-          dogPosition.distanceTo(additionalItem.position) < 150 && this.hasItemBeenDroppedLongEnough(additionalItem)) {
+      if (additionalItem && this.validateItemExists(additionalItem, droppedItems) &&
+          dogPosition.distanceTo(additionalItem.position) < 150 && hasItemBeenDroppedLongEnough(additionalItem, Date.now())) {
         this.addFetchTarget(additionalItem);
       }
     }
@@ -296,7 +304,7 @@ export class DogCompanion {
         this.fetchTargets.shift();
         
         // Remove item from ground immediately when dog picks it up
-        this.removeItemFromGround(currentTarget);
+        this.droppedItems.remove(currentTarget);
         
         // Create visual item in mouth
         this.carry.add(currentTarget.userData.itemId);
@@ -321,8 +329,8 @@ export class DogCompanion {
       } else {
         // Close enough to player - deliver items
         console.log(`🎉 Dog close enough to deliver! Items to deliver: ${this.fetchedItems.length}`);
-        
-        const deliverySuccess = this.deliverMultipleItems();
+
+        const deliverySuccess = this.delivery.deliver(this.fetchedItems, () => this.carry.removeLatest());
         
         if (deliverySuccess) {
           console.log('🎉 Multi-item delivery completed successfully!');
@@ -399,52 +407,13 @@ export class DogCompanion {
     
     for (const item of droppedItems) {
       const distance = dogPosition.distanceTo(item.position);
-      if (distance <= maxSearchDistance && !this.isAlreadyTargeted(item) && this.hasItemBeenDroppedLongEnough(item)) {
+      if (distance <= maxSearchDistance && !this.isAlreadyTargeted(item) && hasItemBeenDroppedLongEnough(item, Date.now())) {
         return item;
       }
     }
     
     return null;
   }
-  // Check if an item has been on the ground for at least 15 seconds
-  hasItemBeenDroppedLongEnough(item: any): boolean {
-    if (!item.userData || !item.userData.dropTime) {
-      console.log(`⏰ Item ${item.userData?.itemId} has no drop time - assuming it's been there long enough`);
-      return true; // If no drop time is recorded, assume it's been there long enough
-    }
-    
-    const currentTime = Date.now();
-    const dropTime = item.userData.dropTime;
-    const timeOnGround = currentTime - dropTime;
-    const minimumWaitTime = 10000; // 15 seconds in milliseconds
-    
-    const isReady = timeOnGround >= minimumWaitTime;
-    
-    if (!isReady) {
-      const remainingTime = Math.ceil((minimumWaitTime - timeOnGround) / 1000);
-      console.log(`⏰ Item ${item.userData.itemId} needs ${remainingTime} more seconds before dog pickup`);
-    } else {
-      console.log(`✅ Item ${item.userData.itemId} has been on ground for ${Math.floor(timeOnGround / 1000)} seconds - ready for pickup`);
-    }
-    
-    return isReady;
-  }
-
-  findNearestDroppedItem(droppedItems: any[], dogPosition: THREE.Vector3): any {
-    let nearestItem = null;
-    let nearestDistance = Infinity;
-    
-    for (const item of droppedItems) {
-      const distance = dogPosition.distanceTo(item.position);
-      if (distance < nearestDistance) {
-        nearestItem = item;
-        nearestDistance = distance;
-      }
-    }
-    
-    return nearestItem;
-  }
-
   // Enhanced validation method to ensure items exist in both arrays and scene
   validateItemExists(item: any, droppedItems: any[]): boolean {
     if (!item) {
@@ -474,253 +443,6 @@ export class DogCompanion {
     }
     
     return isValid;
-  }
-
-  deliverMultipleItems() {
-    console.log('🚀 Multi-item delivery system started');
-    console.log('Items to deliver:', this.fetchedItems.length);
-    
-    if (this.fetchedItems.length === 0) {
-      console.log('❌ No items to deliver');
-      return false;
-    }
-    
-    const gameInstance = (window as any).gameInstance;
-    if (!gameInstance?.inventory || !gameInstance?.itemRegistry) {
-      console.log('❌ Missing game instance, inventory, or item registry');
-      return false;
-    }
-    
-    let deliveredItems = [];
-    let totalDelivered = 0;
-    
-    // Deliver each item one by one
-    for (let i = 0; i < this.fetchedItems.length; i++) {
-      const fetchedItem = this.fetchedItems[i];
-      const itemId = fetchedItem.userData.itemId;
-      const quantity = fetchedItem.userData.quantity || 1;
-      const item = gameInstance.itemRegistry[itemId];
-      
-      if (!item) {
-        console.warn(`❌ Item ${itemId} not found in registry, skipping`);
-        continue;
-      }
-      
-      console.log(`📦 Delivering item ${i + 1}/${this.fetchedItems.length}: ${item.name} x${quantity}`);
-      
-      // Try to add the item to inventory
-      const addedQuantity = gameInstance.inventory.addItem(item, quantity);
-      
-      if (addedQuantity > 0) {
-        deliveredItems.push({ item, quantity: addedQuantity });
-        totalDelivered += addedQuantity;
-        console.log(`✅ Successfully delivered ${addedQuantity} ${item.name}(s)`);
-        
-        // Remove one visual item from mouth after each successful delivery
-        this.carry.removeLatest();
-        
-        // Small delay between deliveries for visual effect
-        if (i < this.fetchedItems.length - 1) {
-          setTimeout(() => {
-            // Visual feedback for sequential delivery
-            console.log(`🔄 Delivered ${i + 1}/${this.fetchedItems.length} items so far`);
-          }, i * 100);
-        }
-      } else {
-        console.warn(`❌ Could not deliver ${item.name} - inventory may be full`);
-      }
-    }
-    
-    // Force comprehensive UI update after all deliveries
-    this.forceInventoryUIUpdate();
-    
-    // Show delivery message with summary using pickup popup system
-    if (deliveredItems.length > 0) {
-      this.showDeliveryPopup(deliveredItems, totalDelivered);
-      
-      // Trigger inventory change callbacks
-      if (gameInstance.inventory.onInventoryChange) {
-        gameInstance.inventory.onInventoryChange();
-      }
-      
-      // Update player held item
-      setTimeout(() => {
-        if (gameInstance.player && gameInstance.inventory) {
-          const selectedItem = gameInstance.inventory.getSelectedItem();
-          gameInstance.player.updateHeldItem(selectedItem);
-        }
-      }, 100);
-      
-      console.log(`🎉 Multi-item delivery completed! Delivered ${totalDelivered} items total`);
-      return true;
-    }
-    
-    console.log('❌ No items were successfully delivered');
-    return false;
-  }
-  showDeliveryPopup(deliveredItems: any[], totalDelivered: number): void {
-    const gameInstance = (window as any).gameInstance;
-    if (!gameInstance?.inventoryUI) {
-      console.warn('No inventory UI available for delivery popup');
-      return;
-    }
-    
-    // Group items by type for cleaner display
-    const itemSummary: Record<string, { item: any; quantity: number }> = {};
-    deliveredItems.forEach(({ item, quantity }) => {
-      if (itemSummary[item.id]) {
-        itemSummary[item.id].quantity += quantity;
-      } else {
-        itemSummary[item.id] = { item, quantity };
-      }
-    });
-    
-    // Show popup for each unique item type delivered
-    const summaryEntries = Object.values(itemSummary);
-    
-    if (summaryEntries.length === 1) {
-      // Single item type - show as dog delivery
-      const { item, quantity } = summaryEntries[0];
-      this.showDogDeliveryPopup(item, quantity);
-    } else {
-      // Multiple item types - show summary
-      this.showMultiItemDeliveryPopup(summaryEntries, totalDelivered);
-    }
-  }
-  
-  showDogDeliveryPopup(item: any, quantity: number): void {
-    const gameInstance = (window as any).gameInstance;
-    if (!gameInstance?.inventoryUI) return;
-    
-    // Create a custom popup element similar to pickup popup
-    const popup = document.createElement('div');
-    popup.className = 'pickup-popup';
-    popup.style.background = 'linear-gradient(145deg, #90EE90, #98FB98)';
-    popup.style.borderColor = '#32CD32';
-    
-    // Get item icon
-    const iconInfo = gameInstance.inventoryUI.getItemIcon(item);
-    
-    // Create popup content with dog emoji
-    popup.innerHTML = `
-      <div class="item-icon" style="background-color: ${iconInfo.color};">
-        ${iconInfo.icon}
-      </div>
-      <div class="pickup-details">
-        <div class="pickup-item-name">
-          <span class="pickup-plus-sign">🐕</span>${item.name}
-        </div>
-        <div class="pickup-item-quantity">
-          Dog delivered ${quantity > 1 ? `${quantity} items` : '1 item'}
-        </div>
-      </div>
-    `;
-    
-    // Add to document
-    document.body.appendChild(popup);
-    
-    // Remove popup after animation
-    setTimeout(() => {
-      if (popup.parentNode) {
-        popup.parentNode.removeChild(popup);
-      }
-    }, 3000);
-  }
-  
-  showMultiItemDeliveryPopup(summaryEntries: any[], totalDelivered: number): void {
-    const gameInstance = (window as any).gameInstance;
-    if (!gameInstance?.inventoryUI) return;
-    
-    // Create a custom popup for multiple items
-    const popup = document.createElement('div');
-    popup.className = 'pickup-popup';
-    popup.style.background = 'linear-gradient(145deg, #90EE90, #98FB98)';
-    popup.style.borderColor = '#32CD32';
-    popup.style.width = 'auto';
-    popup.style.minWidth = '200px';
-    
-    // Create content with multiple item summary
-    let itemIcons = '';
-    const maxShow = 3;
-    for (let i = 0; i < Math.min(summaryEntries.length, maxShow); i++) {
-      const { item } = summaryEntries[i];
-      const iconInfo = gameInstance.inventoryUI.getItemIcon(item);
-      itemIcons += `<div class="item-icon" style="background-color: ${iconInfo.color}; width: 32px; height: 32px; font-size: 16px; margin: 2px;">${iconInfo.icon}</div>`;
-    }
-    
-    if (summaryEntries.length > maxShow) {
-      itemIcons += `<div style="color: #8B4513; font-size: 12px; font-weight: bold;">+${summaryEntries.length - maxShow} more</div>`;
-    }
-    
-    popup.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 2px;">
-          ${itemIcons}
-        </div>
-      </div>
-      <div class="pickup-details">
-        <div class="pickup-item-name">
-          <span class="pickup-plus-sign">🐕</span>Multiple Items
-        </div>
-        <div class="pickup-item-quantity">
-          Dog delivered ${totalDelivered} items
-        </div>
-      </div>
-    `;
-    
-    // Add to document
-    document.body.appendChild(popup);
-    
-    // Remove popup after animation
-    setTimeout(() => {
-      if (popup.parentNode) {
-        popup.parentNode.removeChild(popup);
-      }
-    }, 3000);
-  }
-  
-  forceInventoryUIUpdate() {
-    const gameInstance = (window as any).gameInstance;
-    if (!gameInstance?.inventoryUI) return;
-    
-    console.log('🔄 Forcing comprehensive inventory UI update');
-    
-    try {
-      // Update all UI components
-      if (gameInstance.inventoryUI.updateUI) {
-        gameInstance.inventoryUI.updateUI();
-      }
-      if (gameInstance.inventoryUI.updateHotbar) {
-        gameInstance.inventoryUI.updateHotbar();
-      }
-      if (gameInstance.inventoryUI.updateBackpack) {
-        gameInstance.inventoryUI.updateBackpack();
-      }
-      
-      // Force recreation of hotbar if possible
-      if (gameInstance.inventoryUI.createHotbar && gameInstance.inventoryUI.hotbarContainer) {
-        gameInstance.inventoryUI.hotbarContainer.innerHTML = '';
-        gameInstance.inventoryUI.createHotbar();
-      }
-      
-      console.log('✅ Inventory UI update completed');
-    } catch (error) {
-      console.warn('⚠️ Inventory UI update error:', error);
-    }
-    
-    // Delayed updates for reliability
-    setTimeout(() => {
-      try {
-        if (gameInstance.inventoryUI.updateUI) {
-          gameInstance.inventoryUI.updateUI();
-        }
-        if (gameInstance.inventory.onInventoryChange) {
-          gameInstance.inventory.onInventoryChange();
-        }
-      } catch (error) {
-        console.warn('⚠️ Delayed inventory update error:', error);
-      }
-    }, 50);
   }
 
   bark() {
@@ -755,38 +477,6 @@ export class DogCompanion {
     }
   }
 
-  removeItemFromGround(targetItem: any): void {
-    const itemToRemove = targetItem;
-    if (!itemToRemove) return;
-    
-    console.log('Dog is picking up item - removing item from world');
-    
-    // Trigger pickup UI fade-out BEFORE removing the item
-    if ((window as any).gameInstance && (window as any).gameInstance.inventoryUI && itemToRemove.userData.itemId) {
-      (window as any).gameInstance.inventoryUI.cleanupWorldPickupPrompts(itemToRemove.userData.itemId);
-    }
-    
-    // Remove item from scene
-    this.scene.remove(itemToRemove);
-    
-    // Remove from game's pickupable items array
-    if ((window as any).gameInstance && (window as any).gameInstance.pickupableItems) {
-      const index = (window as any).gameInstance.pickupableItems.indexOf(itemToRemove);
-      if (index !== -1) {
-        (window as any).gameInstance.pickupableItems.splice(index, 1);
-        console.log('Dog removed item from ground:', itemToRemove.userData.itemId);
-      }
-    }
-    
-    // Remove from item drop system's tracking array
-    if ((window as any).gameInstance && (window as any).gameInstance.itemDropSystem) {
-      const dropSystemIndex = (window as any).gameInstance.itemDropSystem.droppedItems.indexOf(itemToRemove);
-      if (dropSystemIndex !== -1) {
-        (window as any).gameInstance.itemDropSystem.droppedItems.splice(dropSystemIndex, 1);
-      }
-    }
-  }
-  
   destroy() {
     // Remove all carried items before destroying
     this.carry.clear();
