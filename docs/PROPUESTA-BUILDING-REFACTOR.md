@@ -49,7 +49,7 @@ la copia inline. El plan se diseña para no repetirlo.
 | 1. Reconciliar huérfanos | Borrar `BuildingPreview.ts` y `WallIntersectionHelper.ts`; hacer de `BuildingResourceManager` el único dueño de recursos y borrar los métodos inline. | bajo | ✅ hecha |
 | 2. Efectos/animaciones | Adoptado el módulo `BuildingAnimations` (4º huérfano, ya existía completo) en vez de crear `BuildEffects`: `BuildingSystem` delega colocación/destrucción y partículas, y se borra el código inline + el estado `animatingWalls`/`particleSystems`. | bajo | ✅ hecha (verificar *sensación* de animación en playtest: el módulo difiere del inline en pooling y compleción por Promesa) |
 | 3. `BuildHUD` (DOM) | Extraído el menú de selección + thumbnails 3D, el banner de modo/coste y el floating text a `BuildHUD`, con el host tipado como `BuildingSystem` (typecheck caza cualquier prefijo mal). `BuildingSystem` baja a ~1410 líneas y mantiene stubs finos. Se extrajo el inline VIVO (no se adoptó el `BuildingUI.ts` borrado: estaba divergido en ambos sentidos). | medio | ✅ hecha (DOM no testeable headless; el menú es la superficie más densa, exprimirlo en el playtest) |
-| 4. `BuildTracking` (estado) | `builtWalls`+`occupiedCells`+`cellToWallMap`+`builtObjectsByType` con API add/remove/query. Migrar save/restore, `ClientWorld`, `DebugUI`. **Desacopla el resto.** | medio-alto | pendiente |
+| 4. `BuildTracking` (estado) | `BuildTracking` **coordina** (no re-posee): tiene `builtWalls`, delega ocupación→`LevelManager` y por-tipo→`Registry`. Único camino de ESCRITURA; todas las escrituras (buildWall, break, materialize/remove, save-restore, clear) pasan por él. Lecturas externas (`DebugUI`, serialize) vía getters. `ClientWorld` resultó NO ser poker (usa su propio `state`). 6 tests unitarios (incluido el caso multinivel). | medio-alto | ✅ hecha |
 | 5. Wire `BuildingPreview` | Re-extraer el preview sobre `BuildTracking`; borrar la copia inline. | medio | pendiente |
 | 6. `PlacementController` | `buildWall` + validación + `requestPlace` + `materializeNetworkBuilding`. | alto | pendiente |
 | 7. `BreakController` | `deleteWall`/`breakObject`/`completeWallBreak` + `requestRemove` + `removeNetworkBuilding`. | alto | pendiente |
@@ -61,6 +61,7 @@ que es el núcleo de riesgo). 4-8 son el grueso y se hacen con el checklist de F
 ## Checklist de smoke manual (Fase 0)
 
 Tras cada fase, en navegador. Single-player salvo donde diga multi.
+**Estado:** playtest acumulado de las Fases 1-3 (+ el fix de demolición y los puntos 1-5) ejecutado y OK.
 
 **Colocación**
 1. Entrar en modo construcción (V); el preview sigue al jugador y al cursor.
@@ -95,6 +96,7 @@ propio `<style>` (no hay hoja central); el casing exacto de ficheros en imports.
 ## Deuda conocida (backlog, no bloquea fases)
 
 - **Fuga de contextos WebGL en los thumbnails del menú.** `BuildHUD.create3DPreview` crea un `THREE.WebGLRenderer` por buildable y nunca lo desecha, y `showSelectionScreen` re-ejecuta `initializeSelectionPreviews` en cada refresco (incluido cada `selectBuildObject`). Cada refresco filtra ~5 contextos hacia el límite del navegador (~16). Es preexistente (la Fase 3 lo movió tal cual, no lo introdujo). Fix futuro: un `BuildHUD.destroy()` / desechar-antes-de-recrear.
+- **Ocupación de guardado siempre en el nivel actual (multinivel).** En la Fase 4 se descubrió que el "baile" de nivel de `SaveSystem.registerRestoredBuilding` (poner `currentLevel = building.level`) era **código muerto**: operaba sobre `gameInstance.levelManager`, que nunca se asigna, así que corría el fallback al nivel actual. Resultado real (preexistente, preservado): tanto la restauración de guardado como el materialize de red reservan celdas en el nivel actual, ignorando el nivel guardado del edificio. Fix futuro: pasar el nivel explícito a `BuildTracking` y darle a `LevelManager` una escritura por-nivel.
 - **Recuperar `BuildingPreview.ts` para la Fase 5** (ver nota de fase): se borró en la Fase 1 como muerto; al preferir adoptar huérfanos, conviene recuperarlo del historial en vez de rehacerlo.
 
 ## Resultado objetivo
