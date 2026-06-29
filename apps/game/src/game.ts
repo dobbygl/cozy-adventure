@@ -1219,7 +1219,9 @@ addSampleItemsToInventory() {
 async initializeDogCompanion() {
     try {
       console.log('Initializing dog companion...');
-      this.dogCompanion = new DogCompanion(this.scene!, this.player);
+      // Inject this Game as the companion's host (resolved lazily), so it reaches
+      // collision/inventory/UI through `this` rather than the window global.
+      this.dogCompanion = new DogCompanion(this.scene!, this.player, () => this);
       await this.dogCompanion.load();
       
       // Position dog near player initially

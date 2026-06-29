@@ -7,13 +7,13 @@ import type {
 } from './ports.js';
 
 /**
- * Concrete companion ports backed by the `window.gameInstance` global + the DOM.
- * This is the single place the companion's fetch/delivery touches the global and
- * builds popup elements; the rest of companion/ talks only to the port
- * interfaces. The game is read through a getter on every call, preserving the
- * late-binding the old per-frame `window.gameInstance` lookups had.
- *
- * TODO(phase 7): build these from injected game systems instead of the global.
+ * Concrete companion ports backed by the host game + the DOM. This is the single
+ * place the companion's fetch/delivery reaches into the game and builds popup
+ * elements; the rest of companion/ talks only to the port interfaces. The game is
+ * resolved through `getGame` on every call, preserving the late-binding the old
+ * per-frame `window.gameInstance` lookups had. The game injects `() => this`
+ * (see Game.initializeDogCompanion); the getter still defaults to the window
+ * singleton for callers that don't inject one.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
