@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { WallIntersectionHelper } from './WallIntersectionHelper.js';
 import { BuildingResourceManager } from './BuildingResourceManager.js';
 import { BuildableObjectsRegistry } from './BuildableObjectsRegistry.js';
 import { BuildingSaveManager } from './BuildingSaveManager.js';
@@ -39,7 +38,6 @@ export class BuildingSystem {
   mouse: THREE.Vector2;
   buildingMode: string;
   selectedBuildObject: string;
-  wallCost: { wood: number };
   currentRotation: number;
   rotationSteps: number[];
   currentRotationIndex: number;
@@ -117,11 +115,6 @@ export class BuildingSystem {
     
     // Build selection system - will be populated from registry
     this.selectedBuildObject = 'wall'; // Currently selected object to build
-    
-    // Legacy support - will be removed later
-    this.wallCost = {
-      wood: 10 // Each wall costs 10 wood
-    };
     
     // Rotation state
     this.currentRotation = 0; // Current rotation in radians (0, π/2, π, 3π/2)
@@ -261,7 +254,7 @@ updateLevelReferences() {
         this.updateMousePosition(event);
         this.updatePreview();
         // Always update cursor warning position if showing
-        this.updateCursorWarningPosition();
+        this.resourceManager.updateCursorWarningPosition(this.mouse, this.camera as any);
       }
     });
     
@@ -546,7 +539,7 @@ updateLevelReferences() {
       }
     } else if (this.buildingMode === 'delete') {
       // Hide resource warning in delete mode since it's not relevant
-      this.hideResourceWarning();
+      this.resourceManager.hideResourceWarning();
       
       // Delete mode: raycast against built walls specifically
       const intersects = this.raycaster.intersectObjects(this.builtWalls, true);
@@ -739,8 +732,8 @@ updateLevelReferences() {
     if (!this.previewMesh || !currentBuildObject || !currentBuildObject.mesh) return;
     
     // Check if player has enough resources
-    if (!this.hasRequiredResources()) {
-      this.showResourceWarning();
+    if (!this.resourceManager.hasRequiredResources(this.selectedBuildObject)) {
+      this.resourceManager.showResourceWarning(this.mouse, this.camera as any);
       return;
     }
     
@@ -835,7 +828,7 @@ updateLevelReferences() {
     }
     
     // Consume resources from inventory
-    this.consumeResources();
+    this.resourceManager.consumeResources(this.selectedBuildObject);
     
     // Add to tracking arrays and mark all cells as occupied
     this.builtWalls.push(newWall);
@@ -1307,8 +1300,20 @@ updateLevelReferences() {
       return;
     }
 
-    // Return half of the resources used to build this object
-    this.returnResources(objectToBreak);
+    // Return half of the resources used to build this object (single-player). The manager
+    // owns the accounting now; reproduce the floating-text feedback from its result here.
+    const refund = this.resourceManager.returnResources(objectToBreak);
+    if (refund && refund.expectedAmount > 0) {
+      if (refund.amountAdded === refund.expectedAmount) {
+        this.showFloatingText(`+${refund.amountAdded} Wood`, objectToBreak.position, '#4CAF50');
+      } else if (refund.amountAdded > 0) {
+        this.showFloatingText(`+${refund.amountAdded} Wood (Inventory Full)`, objectToBreak.position, '#FF9800');
+      } else {
+        this.showFloatingText('Inventory Full!', objectToBreak.position, '#f44');
+      }
+    } else if (refund) {
+      this.showFloatingText('No Resources Returned', objectToBreak.position, '#888');
+    }
 
     // Start break animation instead of immediate removal
     this.playBreakAnimation(objectToBreak);
@@ -1524,7 +1529,7 @@ updateLevelReferences() {
     }
     
     // Hide resource warning when exiting building mode
-    this.hideResourceWarning();
+    this.resourceManager.hideResourceWarning();
     
     // Hide building UI
     this.hideBuildingUI();
@@ -1584,7 +1589,7 @@ updateLevelReferences() {
     
     if (this.buildingMode === 'build') {
       const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-      const hasResources = this.hasRequiredResources();
+      const hasResources = this.resourceManager.hasRequiredResources(this.selectedBuildObject);
       const resourceColor = hasResources ? '#90EE90' : '#FF6B6B';
       
       buildingText.innerHTML = `
@@ -2150,130 +2155,9 @@ updateLevelReferences() {
     }
   }
   
-  // Resource management methods
-  hasRequiredResources() {
-    if (!this.inventory) return true; // If no inventory system, allow building
-    
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-    const requiredCost = currentBuildObject ? currentBuildObject.cost : this.wallCost;
-    
-    return this.inventory.hasItem('wood', requiredCost.wood);
-  }
-  
-  consumeResources() {
-    if (!this.inventory) return;
-    
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-    const requiredCost = currentBuildObject ? currentBuildObject.cost : this.wallCost;
-    
-    this.inventory.removeItem('wood', requiredCost.wood);
-    console.log(`Consumed ${requiredCost.wood} wood to build ${currentBuildObject.name}`);
-  }
-  
-  showResourceWarning() {
-    // Show cursor-following red text warning
-    let warningElement = document.getElementById('resourceWarning');
-    if (!warningElement) {
-      warningElement = document.createElement('div');
-      warningElement.id = 'resourceWarning';
-      warningElement.style.cssText = `
-        position: fixed;
-        color: #ff4444;
-        font-family: Arial, sans-serif;
-        font-size: 14px;
-        font-weight: bold;
-        z-index: 3000;
-        pointer-events: none;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-        white-space: nowrap;
-      `;
-      document.body.appendChild(warningElement);
-    }
-    
-    warningElement.textContent = 'Not enough resources';
-    warningElement.style.display = 'block';
-    
-    // Position at cursor with offset
-    this.updateCursorWarningPosition();
-    
-    // Keep warning visible (no automatic hiding)
-  }
-  
-  hideResourceWarning() {
-    const warningElement = document.getElementById('resourceWarning');
-    if (warningElement) {
-      warningElement.style.display = 'none';
-    }
-  }
-  
-  updateCursorWarningPosition() {
-    const warningElement = document.getElementById('resourceWarning');
-    if (!warningElement || warningElement.style.display === 'none') return;
-    
-    // Get current mouse position and add offset so text doesn't block cursor
-    const rect = (this.camera as any).domElement?.getBoundingClientRect() || { left: 0, top: 0 };
-    const mouseX = ((this.mouse.x + 1) / 2) * window.innerWidth;
-    const mouseY = ((-this.mouse.y + 1) / 2) * window.innerHeight;
-    
-    warningElement.style.left = (mouseX + 15) + 'px'; // 15px offset to right
-    warningElement.style.top = (mouseY - 25) + 'px';  // 25px offset above
-  }
-  
   // Method to set inventory reference
   setInventory(inventory: Inventory | null) {
     this.inventory = inventory;
-  }
-  
-  returnResources(wall: THREE.Object3D) {
-    if (!this.inventory || !wall.userData.isBuildingWall) return;
-    
-    // Default to regular wall for resource return
-    const buildObject = this.buildableObjects['wall'];
-    if (!buildObject) return;
-    
-    // Calculate half of the original cost (always round down)
-    const originalCost = buildObject.cost.wood;
-    const returnAmount = Math.floor(originalCost / 2);
-    
-    console.log(`🔍 RESOURCE RETURN DEBUG:`);
-    console.log(`  Build object:`, buildObject);
-    console.log(`  Original cost: ${originalCost} wood`);
-    console.log(`  Calculated return amount: ${returnAmount} wood (half of ${originalCost})`);
-    console.log(`  Current wood in inventory BEFORE: ${this.inventory.getItemCount('wood')}`);
-    
-    if (returnAmount > 0) {
-      // Create a simple wood item directly since itemRegistry might not be working
-      // Loose item-like literal; cast to Item since only id/name/stackSize are read downstream.
-      const woodItem = { id: 'wood', name: 'Wood', type: 'material', stackSize: 64 } as Item;
-      
-      console.log(`  About to add ${returnAmount} wood to inventory...`);
-      
-      // CRITICAL FIX: Only add the calculated return amount, not the original cost
-      const actualAmountAdded = this.inventory.addItem(woodItem, returnAmount);
-      
-      console.log(`  Inventory.addItem returned: ${actualAmountAdded}`);
-      console.log(`  Current wood in inventory AFTER: ${this.inventory.getItemCount('wood')}`);
-      
-      if (actualAmountAdded === returnAmount) {
-        console.log(`✓ Successfully returned ${actualAmountAdded} wood from breaking ${buildObject.name} (half of ${originalCost})`);
-        
-        // Show floating text notification with the actual amount added
-        this.showFloatingText(`+${actualAmountAdded} Wood`, wall.position, '#4CAF50');
-      } else if (actualAmountAdded > 0) {
-        console.warn(`Only returned ${actualAmountAdded} wood instead of ${returnAmount} - inventory may be full`);
-        
-        // Show partial return notification
-        this.showFloatingText(`+${actualAmountAdded} Wood (Inventory Full)`, wall.position, '#FF9800');
-      } else {
-        console.warn(`Could not return any wood - inventory is full`);
-        this.showFloatingText('Inventory Full!', wall.position, '#f44');
-      }
-    } else {
-      console.log(`No resources returned for breaking ${buildObject.name} (original cost was ${originalCost}, half rounds to 0)`);
-      
-      // Show no resources notification for clarity
-      this.showFloatingText('No Resources Returned', wall.position, '#888');
-    }
   }
   
   // Floating text notification system
