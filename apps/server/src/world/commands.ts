@@ -15,6 +15,16 @@ import { distanceXZ } from './geometry';
 /** How far a player may act from their last known position (units). */
 export const MAX_REACH = 6;
 
+/**
+ * Reach for placing a building, deliberately larger than MAX_REACH. Buildings are laid
+ * out on a grid around the player: a floor is 4x4 cells (~8 units wide) so its center
+ * already sits several units out, and the third-person build cursor reaches farther
+ * still. 6 units rejected most legitimate placements as out_of_range — picking an item
+ * off the ground is a close action, placing a structure is not, so they get separate
+ * budgets. Still bounded (an anti-cheat sanity cap), just generous.
+ */
+export const MAX_BUILD_REACH = 20;
+
 export interface CommandContext {
   world: World;
   player: PlayerState;
@@ -26,11 +36,11 @@ export type CommandOutcome =
   | { ok: true; diff: WorldDiff; inventoryDelta?: { itemId: string; delta: number } }
   | { ok: false; reason: RejectReason };
 
-function inReach(ctx: CommandContext, target: Vec3): boolean {
+function inReach(ctx: CommandContext, target: Vec3, max: number = MAX_REACH): boolean {
   // Range is enforced only once the player has reported a position (just-joined
   // players with no position yet are not range-checked).
   if (!ctx.playerPosition) return true;
-  return distanceXZ(ctx.playerPosition, target) <= MAX_REACH;
+  return distanceXZ(ctx.playerPosition, target) <= max;
 }
 
 export function applyCommand(ctx: CommandContext, cmd: WorldCommand, now: number): CommandOutcome {
@@ -109,7 +119,7 @@ function placeBuilding(
 ): CommandOutcome {
   const def = getBuildable(cmd.registryType);
   if (!def) return { ok: false, reason: 'invalid' };
-  if (!inReach(ctx, cmd.position)) return { ok: false, reason: 'out_of_range' };
+  if (!inReach(ctx, cmd.position, MAX_BUILD_REACH)) return { ok: false, reason: 'out_of_range' };
 
   const cells = buildingFootprintCells(def.footprint, cmd.position, cmd.rotation.y, cmd.level);
   for (const cell of cells) {

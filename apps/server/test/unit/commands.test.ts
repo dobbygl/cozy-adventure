@@ -94,3 +94,35 @@ describe('harvest_node command (multi-hit resource nodes)', () => {
     expect(outcome.reason).toBe('invalid');
   });
 });
+
+describe('place_building reach (MAX_BUILD_REACH vs MAX_REACH)', () => {
+  const placeFloorAt = (x: number): Extract<WorldCommand, { type: 'place_building' }> => ({
+    type: 'place_building',
+    registryType: 'floor',
+    position: { x, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 },
+    level: 0,
+  });
+
+  function richCtxAtOrigin(): CommandContext {
+    const player = makePlayer();
+    player.inventory.hotbar = { 0: { itemId: 'wood', quantity: 99 } };
+    return { world: World.createFresh('w', 0), player, playerPosition: { x: 0, y: 0, z: 0 } };
+  }
+
+  it('allows a build farther than MAX_REACH — a structure reaches farther than a pickup', () => {
+    // 10 units out: past MAX_REACH (6) but within MAX_BUILD_REACH (20).
+    const outcome = applyCommand(richCtxAtOrigin(), placeFloorAt(10), 0);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.diff.type).toBe('building_placed');
+  });
+
+  it('still rejects a build beyond MAX_BUILD_REACH', () => {
+    // 25 units out: past MAX_BUILD_REACH (20), so the sanity cap still bites.
+    const outcome = applyCommand(richCtxAtOrigin(), placeFloorAt(25), 0);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.reason).toBe('out_of_range');
+  });
+});
