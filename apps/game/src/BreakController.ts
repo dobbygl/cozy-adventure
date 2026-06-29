@@ -133,6 +133,11 @@ export class BreakController {
    * both the live demolition path (a peer or this client ran remove_building) and reconnect
    * snapshots through here, undoing everything tracking.add recorded (walls list + registry +
    * cells) so nothing leaks.
+   *
+   * Frees the footprint via removeAcrossLevels, NOT the current-level-only remove(cellsFor):
+   * the player may have switched build level between this building being tracked and the
+   * broadcast arriving, in which case cellsFor would see no cells on the current level and
+   * leak the reservation on the level that actually owns it.
    */
   removeNetworkBuilding(networkId: number): void {
     const bs = this.buildingSystem;
@@ -140,6 +145,7 @@ export class BreakController {
     if (!wall) return;
     bs.scene.remove(wall);
     bs.collisionSystem?.removeCollider(wall);
-    bs.tracking.remove(wall, bs.tracking.cellsFor(wall));
+    const freedCells = bs.tracking.removeAcrossLevels(wall);
+    freedCells.forEach((cellKey) => bs.removeDebugIndicator(cellKey));
   }
 }

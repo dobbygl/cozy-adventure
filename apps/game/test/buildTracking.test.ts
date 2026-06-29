@@ -35,6 +35,21 @@ class FakeLevelManager {
   removeOccupiedCell(key: string) {
     return this.occFor().delete(key);
   }
+  /** Free every cell mapped to `wall` on ANY level, matched by identity (mirrors LevelManager). */
+  removeWallFromAllLevels(wall: THREE.Object3D) {
+    const freed: string[] = [];
+    for (const [level, cellToWall] of this.c2w) {
+      const occupied = this.occ.get(level);
+      for (const [cellKey, mapped] of cellToWall) {
+        if (mapped === wall) {
+          cellToWall.delete(cellKey);
+          occupied?.delete(cellKey);
+          freed.push(cellKey);
+        }
+      }
+    }
+    return freed;
+  }
   /** Test helper: occupancy set for a specific level. */
   occAt(level: number) {
     return this.occ.get(level) ?? new Set<string>();
@@ -105,6 +120,38 @@ describe('BuildTracking', () => {
     expect(reg.count('floor')).toBe(0);
     expect(lm.getCurrentLevelOccupiedCells().size).toBe(0);
     expect(lm.getCurrentLevelCellToWallMap().size).toBe(0);
+  });
+
+  it('removeAcrossLevels() frees the footprint on the OWNING level even when viewing another', () => {
+    // The multiplayer demolition leak: tracked on level 1, player switches to level 0, then the
+    // building_removed broadcast arrives. The current-level-only remove(cellsFor) would drop the
+    // mesh but leak level 1's reservation; removeAcrossLevels matches by identity and frees it.
+    lm.currentLevel = 1;
+    const w = wall(1_000_007);
+    tracking.add(w, 'wall', ['2,2', '3,2']);
+    lm.currentLevel = 0;
+
+    const freed = tracking.removeAcrossLevels(w);
+
+    expect(freed.sort()).toEqual(['2,2', '3,2']);
+    expect(tracking.builtWalls).not.toContain(w);
+    expect(reg.count('wall')).toBe(0);
+    expect(lm.occAt(1).size).toBe(0);
+  });
+
+  it('removeAcrossLevels() matches by wall identity, not cell key (no cross-level over-free)', () => {
+    lm.currentLevel = 0;
+    const a = wall();
+    tracking.add(a, 'wall', ['4,4']);
+    lm.currentLevel = 1;
+    const b = wall();
+    tracking.add(b, 'wall', ['4,4']); // same cell key, different level
+
+    tracking.removeAcrossLevels(a);
+
+    expect(lm.occAt(0).size).toBe(0); // a's level freed
+    expect([...lm.occAt(1)]).toEqual(['4,4']); // b untouched despite the identical key
+    expect(tracking.builtWalls).toContain(b);
   });
 
   it('findByNetworkId() locates a tracked building by its stable id', () => {

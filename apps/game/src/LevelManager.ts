@@ -223,6 +223,29 @@ export class LevelManager {
     return false;
   }
 
+  /**
+   * Free every cell mapped to `wall`, on whatever level holds it, matched by wall IDENTITY
+   * (a cell key like "2,3" can repeat across levels, so we compare the mapped object, not the
+   * key — leaving another level's building intact). Returns the freed cell keys. Demolition
+   * uses this so a building removed while the player is viewing a different build level than
+   * the one it was tracked on still releases its footprint on its own level (deleting the
+   * current entry mid-iteration is well-defined for Map).
+   */
+  removeWallFromAllLevels(wall: THREE.Object3D): string[] {
+    const freed: string[] = [];
+    for (const [level, cellToWall] of this.levelCellToWallMap) {
+      const occupiedCells = this.levelOccupiedCells.get(level);
+      for (const [cellKey, mapped] of cellToWall) {
+        if (mapped === wall) {
+          cellToWall.delete(cellKey);
+          occupiedCells?.delete(cellKey);
+          freed.push(cellKey);
+        }
+      }
+    }
+    return freed;
+  }
+
   getCurrentLevelCellToWallMap(): Map<string, THREE.Object3D> {
     return this.levelCellToWallMap.get(this.currentLevel) || new Map<string, THREE.Object3D>();
   }
