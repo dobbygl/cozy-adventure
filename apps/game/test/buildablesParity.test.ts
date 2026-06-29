@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { BUILDABLES } from '@cozy/shared';
 import { BuildableObjectsRegistry } from '../src/BuildableObjectsRegistry';
 
-// The cost + footprint of each buildable live in two tables (the client registry also
-// carries model/scale; the shared catalog is what the server validates against). They
-// MUST stay equal or the server would reject placements the client previews. This guard
-// fails the build if they drift.
+// The client registry now DERIVES cost + footprint from the shared BUILDABLES catalog
+// (it only adds presentation), so the two can no longer drift by construction. This guard
+// keeps a different invariant honest: every shared buildable must have client presentation
+// (else it is dropped from the build menu) and the merge must wire cost/footprint through.
 describe('client registry mirrors the shared buildables catalog', () => {
   it('cost and footprint match for every shared buildable', () => {
     const defs = new BuildableObjectsRegistry().getObjectDefinitions();
