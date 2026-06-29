@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CompanionAnimator } from './companion/CompanionAnimator.js';
 import { CompanionPhysics } from './companion/CompanionPhysics.js';
 import { CompanionLocomotion } from './companion/CompanionLocomotion.js';
+import { CarryVisual } from './companion/fetch/CarryVisual.js';
 
 export class DogCompanion {
   scene: THREE.Scene;
@@ -27,8 +28,8 @@ export class DogCompanion {
   fetchTargets: any[];
   maxCarryCapacity: number;
   returnToPlayer: boolean;
-  itemsInMouth: THREE.Mesh[];
-  mouthContainer: THREE.Group | null;
+  // The items the dog visibly carries in its mouth (assigned in load()).
+  carry!: CarryVisual;
   loader: GLTFLoader;
 
   constructor(scene: THREE.Scene, player: any) {
@@ -64,11 +65,7 @@ export class DogCompanion {
     this.fetchTargets = []; // Array to hold multiple fetch targets
     this.maxCarryCapacity = 15; // Dog can carry up to 15 items at once
     this.returnToPlayer = false;
-    
-    // Visual items in mouth - now an array
-    this.itemsInMouth = [];
-    this.mouthContainer = null;
-    
+
     this.loader = new GLTFLoader();
   }
 
@@ -93,10 +90,10 @@ export class DogCompanion {
       this.animator.playDefault();
 
       this.scene.add(this.mesh);
-      
-      // Create mouth container for holding items
-      this.createMouthContainer();
-      
+
+      // Container for items the dog carries in its mouth
+      this.carry = new CarryVisual(this.mesh);
+
       console.log('Dog companion loaded successfully');
       
       return this.mesh;
@@ -112,8 +109,8 @@ export class DogCompanion {
       // Fallback mesh has no clips: an inert animator keeps later play()/update() safe.
       this.animator = new CompanionAnimator(this.mesh);
 
-      // Create mouth container for fallback mesh too
-      this.createMouthContainer();
+      // Carry container for the fallback mesh too
+      this.carry = new CarryVisual(this.mesh);
 
       return this.mesh;
     }
@@ -302,7 +299,7 @@ export class DogCompanion {
         this.removeItemFromGround(currentTarget);
         
         // Create visual item in mouth
-        this.createItemInMouth(currentTarget.userData.itemId);
+        this.carry.add(currentTarget.userData.itemId);
         
         // Check if dog should return to player or continue fetching
         if (this.fetchedItems.length >= this.maxCarryCapacity || this.fetchTargets.length === 0) {
@@ -336,7 +333,7 @@ export class DogCompanion {
           this.returnToPlayer = false;
           
           // Remove all visual items from mouth
-          this.removeItemFromMouth();
+          this.carry.clear();
           
           this.animator.playIdle();
           this.bark(); // Happy bark after successful delivery
@@ -520,7 +517,7 @@ export class DogCompanion {
         console.log(`✅ Successfully delivered ${addedQuantity} ${item.name}(s)`);
         
         // Remove one visual item from mouth after each successful delivery
-        this.removeLatestItemFromMouth();
+        this.carry.removeLatest();
         
         // Small delay between deliveries for visual effect
         if (i < this.fetchedItems.length - 1) {
@@ -758,149 +755,6 @@ export class DogCompanion {
     }
   }
 
-  createMouthContainer() {
-    // Create a container for items in the dog's mouth
-    this.mouthContainer = new THREE.Group();
-    
-    // Position the mouth container relative to the dog's head
-    // Adjust these values based on the dog model's proportions
-    this.mouthContainer.position.set(0, 0.2, 0.4); // Forward and up from center
-    this.mouthContainer.rotation.set(0, 0, 0);
-    this.mouthContainer.scale.set(0.5, 0.5, 0.5); // Scale down items in mouth
-    
-    // Add the mouth container to the dog mesh
-    this.mesh.add(this.mouthContainer);
-    
-    console.log('Dog mouth container created');
-  }
-  
-  async createItemInMouth(itemId: string): Promise<void> {
-    if (!itemId || !this.mouthContainer) return;
-    
-    console.log('Creating visual item in dog mouth:', itemId);
-    console.log('Current items in mouth:', this.itemsInMouth.length);
-    
-    // Create a smaller version of the fetched item for the mouth
-    let itemMesh;
-    
-    switch (itemId) {
-      case 'apple':
-        // Create apple geometry (simplified for mouth)
-        const appleGeometry = new THREE.SphereGeometry(0.12, 8, 6);
-        const appleMaterial = new THREE.MeshLambertMaterial({ color: 0xFF4444 });
-        itemMesh = new THREE.Mesh(appleGeometry, appleMaterial);
-        break;
-        
-      case 'wood':
-        // Create wood log geometry
-        const woodGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.25, 6);
-        const woodMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-        itemMesh = new THREE.Mesh(woodGeometry, woodMaterial);
-        itemMesh.rotation.z = Math.PI / 2; // Rotate to be horizontal in mouth
-        break;
-        
-      case 'stone':
-        // Create stone geometry
-        const stoneGeometry = new THREE.DodecahedronGeometry(0.06);
-        const stoneMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
-        itemMesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
-        break;
-        
-      default:
-        // Default cube for other items
-        const defaultGeometry = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-        const defaultMaterial = new THREE.MeshLambertMaterial({ color: 0x4CAF50 });
-        itemMesh = new THREE.Mesh(defaultGeometry, defaultMaterial);
-        break;
-    }
-    
-    // Configure the item mesh
-    itemMesh.castShadow = true;
-    itemMesh.receiveShadow = false;
-    
-    // Position items in a stacked arrangement
-    const itemCount = this.itemsInMouth.length;
-    this.positionItemInMouth(itemMesh, itemCount);
-    
-    // Add to mouth container and tracking array
-    this.mouthContainer.add(itemMesh);
-    this.itemsInMouth.push(itemMesh);
-    
-    // Add slight random rotation for natural look
-    itemMesh.rotation.x += (Math.random() - 0.5) * 0.3;
-    itemMesh.rotation.y += (Math.random() - 0.5) * 0.3;
-    itemMesh.rotation.z += (Math.random() - 0.5) * 0.3;
-    
-    console.log(`Item ${itemCount + 1} created in dog mouth:`, itemId);
-    console.log(`Total items in mouth: ${this.itemsInMouth.length}`);
-  }
-  
-  positionItemInMouth(itemMesh: THREE.Object3D, itemIndex: number): void {
-    // Base position in the mouth
-    const baseX = 0;
-    const baseY = -0.08;
-    const baseZ = 0.15;
-    
-    // Stacking arrangement - items get stacked vertically and slightly forward
-    const stackOffset = itemIndex * 0.08; // Vertical stacking distance
-    const forwardOffset = itemIndex * 0.05; // Slight forward progression
-    const sideOffset = (itemIndex % 2) * 0.05 - 0.025; // Alternate left/right slightly
-    
-    itemMesh.position.set(
-      baseX + sideOffset,
-      baseY + stackOffset,
-      baseZ + forwardOffset
-    );
-    
-    // Scale down items slightly as they stack up (makes it look more natural)
-    const scaleReduction = Math.min(itemIndex * 0.1, 0.3);
-    const finalScale = 1.0 - scaleReduction;
-    itemMesh.scale.setScalar(finalScale);
-    
-    console.log(`Positioned item ${itemIndex + 1} at:`, itemMesh.position);
-  }
-  
-  removeItemFromMouth() {
-    // Remove all items from mouth
-    if (this.itemsInMouth.length > 0 && this.mouthContainer) {
-      console.log(`Removing ${this.itemsInMouth.length} items from dog mouth`);
-      
-      for (const itemMesh of this.itemsInMouth) {
-        this.mouthContainer.remove(itemMesh);
-        
-        // Dispose of geometry and material
-        if (itemMesh.geometry) itemMesh.geometry.dispose();
-        if (itemMesh.material) (itemMesh.material as THREE.Material).dispose();
-      }
-      
-      this.itemsInMouth = [];
-      console.log('All items removed from dog mouth');
-    }
-  }
-  
-  removeLatestItemFromMouth() {
-    // Remove only the most recently added item (for single item delivery)
-    if (this.itemsInMouth.length > 0 && this.mouthContainer) {
-      const latestItem = this.itemsInMouth.pop()!;
-      this.mouthContainer.remove(latestItem);
-
-      // Dispose of geometry and material
-      if (latestItem.geometry) latestItem.geometry.dispose();
-      if (latestItem.material) (latestItem.material as THREE.Material).dispose();
-      
-      console.log(`Removed latest item from mouth. Remaining: ${this.itemsInMouth.length}`);
-      
-      // Reposition remaining items for better visual arrangement
-      this.repositionRemainingItems();
-    }
-  }
-  
-  repositionRemainingItems() {
-    // Reposition all remaining items to close gaps after removal
-    for (let i = 0; i < this.itemsInMouth.length; i++) {
-      this.positionItemInMouth(this.itemsInMouth[i], i);
-    }
-  }
   removeItemFromGround(targetItem: any): void {
     const itemToRemove = targetItem;
     if (!itemToRemove) return;
@@ -934,9 +788,9 @@ export class DogCompanion {
   }
   
   destroy() {
-    // Remove all items from mouth before destroying
-    this.removeItemFromMouth();
-    
+    // Remove all carried items before destroying
+    this.carry.clear();
+
     if (this.mesh) {
       this.scene.remove(this.mesh);
     }
