@@ -6,6 +6,7 @@ import { BuildingAnimations } from './BuildingAnimations.js';
 import { BuildHUD } from './BuildHUD.js';
 import { BuildPreview } from './BuildPreview.js';
 import { PlacementController } from './PlacementController.js';
+import { BreakController } from './BreakController.js';
 import { BuildTracking } from './BuildTracking.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory } from './inventory.js';
@@ -40,6 +41,7 @@ export class BuildingSystem {
   tracking: BuildTracking;
   preview: BuildPreview;
   placement: PlacementController;
+  demolition: BreakController;
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
   buildingMode: string;
@@ -139,6 +141,8 @@ export class BuildingSystem {
     this.preview = new BuildPreview(this);
     // Placement actions (local build + network materialize), delegated to PlacementController.
     this.placement = new PlacementController(this);
+    // Demolition actions (delete-mode break + network removal), delegated to BreakController.
+    this.demolition = new BreakController(this);
 
     // Player reference for grid following
     this.player = null;
@@ -584,126 +588,12 @@ async init() {
     
     console.log(`Selected build object: ${this.buildableObjects[objectKey].name}`);
   }
-  
+
+  // Demolition lives in BreakController; thin forwarder keeps the delete-mode click caller.
   deleteWall() {
-    if (!this.wallMesh) return;
-    
-    // Raycast to find built walls
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-    
-    const intersects = this.raycaster.intersectObjects(this.builtWalls, true);
-    
-    if (intersects.length > 0) {
-      const targetObject = this.findBreakableParent(intersects[0].object);
-      
-      if (targetObject) {
-        // CRITICAL: Check if this wall is already animating - prevent breaking it again
-        if (this.animations.isAnimating(targetObject)) {
-          console.log('⚠️ Wall is already being broken - ignoring additional break attempts');
-          return;
-        }
-        
-        this.breakObject(targetObject);
-        console.log('Wall successfully broken');
-        
-        // Stay in delete mode and update preview
-        if (this.isBuilding) {
-          // Force immediate preview update while staying in delete mode
-          setTimeout(() => {
-            this.updatePreview();
-          }, 50); // Small delay to ensure DOM updates
-        }
-      }
-    } else {
-      console.log('No built wall found at cursor position');
-    }
+    this.demolition.deleteWall();
   }
-  breakObject(objectToBreak: THREE.Object3D) {
-    if (!objectToBreak || !objectToBreak.userData.isBreakable) return;
 
-    // CRITICAL: Double-check that wall is not already animating
-    if (this.animations.isAnimating(objectToBreak)) {
-      console.log('⚠️ Object is already being broken - preventing duplicate break');
-      return;
-    }
-
-    // Multiplayer: demolition is server-authoritative. Emit a remove_building command and
-    // let the confirmed building_removed event remove it on every client (parity with
-    // placement). Return BEFORE touching anything local: the server owns the world map and
-    // broadcasts the removal, and returning resources here would grant wood the server
-    // never charged back, desyncing the inventory. (No local refund in network mode — a
-    // documented v1 divergence; the server grants none either.) In local mode requestRemove
-    // is null and we break directly below.
-    if (this.requestRemove) {
-      const networkId = objectToBreak.userData.networkId;
-      if (typeof networkId === 'number') {
-        this.requestRemove(networkId);
-      } else {
-        console.warn('⚠️ Cannot remove a building without a networkId in multiplayer', objectToBreak);
-      }
-      return;
-    }
-
-    // Return half of the resources used to build this object (single-player). The manager
-    // owns the accounting now; reproduce the floating-text feedback from its result here.
-    const refund = this.resourceManager.returnResources(objectToBreak);
-    if (refund && refund.expectedAmount > 0) {
-      if (refund.amountAdded === refund.expectedAmount) {
-        this.showFloatingText(`+${refund.amountAdded} Wood`, objectToBreak.position, '#4CAF50');
-      } else if (refund.amountAdded > 0) {
-        this.showFloatingText(`+${refund.amountAdded} Wood (Inventory Full)`, objectToBreak.position, '#FF9800');
-      } else {
-        this.showFloatingText('Inventory Full!', objectToBreak.position, '#f44');
-      }
-    } else if (refund) {
-      this.showFloatingText('No Resources Returned', objectToBreak.position, '#888');
-    }
-
-    // Play the break animation; its confirmed completion runs the authoritative teardown
-    // (free cells, untrack, remove from scene) via completeWallBreak.
-    this.animations.playDestructionAnimation(objectToBreak)?.then(() => this.completeWallBreak(objectToBreak));
-  }
-  
-  completeWallBreak(objectToBreak: THREE.Object3D) {
-    // Clean up building system tracking
-    if (objectToBreak.userData.isBuildingWall) {
-      // The cells this wall holds, with a fallback recompute if the map lost them
-      // (e.g. a wall whose mapping was dropped) — keeps a stray wall breakable.
-      let wallCells = this.tracking.cellsFor(objectToBreak);
-      if (wallCells.length === 0) {
-        const originalSelectedObject = this.selectedBuildObject;
-        this.selectedBuildObject = 'wall';
-        wallCells = this.getOccupiedCells(objectToBreak.position, objectToBreak.rotation.y);
-        this.selectedBuildObject = originalSelectedObject;
-      }
-
-      // Untrack the building (walls list + registry) and free its cells, all in one path.
-      this.tracking.remove(objectToBreak, wallCells);
-      wallCells.forEach((cellKey) => this.removeDebugIndicator(cellKey));
-    }
-    
-    // Remove object from scene (the animating flag and particle cleanup are owned by
-    // BuildingAnimations, which cleared/scheduled them when the destruction tween finished).
-    this.scene.remove(objectToBreak);
-
-    // Remove from collision system
-    if (this.collisionSystem) {
-      this.collisionSystem.removeCollider(objectToBreak);
-    }
-
-    // Force preview update to ensure proper rotation state
-    if (this.isBuilding && this.previewMesh) {
-      // Reset preview rotation to current rotation state
-      this.previewMesh.rotation.y = this.currentRotation;
-      this.previewMesh.updateMatrixWorld(true);
-      
-      // Trigger immediate preview update
-      this.updatePreview();
-    }
-    
-    console.log(`Wall break animation completed at ${objectToBreak.position.x}, ${objectToBreak.position.y}, ${objectToBreak.position.z}`);
-  }
-  
   toggleBuildingMode() {
     if (this.isBuilding) {
       this.exitBuildingMode();
@@ -782,12 +672,7 @@ async init() {
    * (skewing save serialization and per-type counts).
    */
   removeNetworkBuilding(networkId: number): void {
-    const wall = this.tracking.findByNetworkId(networkId);
-    if (!wall) return;
-    this.scene.remove(wall);
-    this.collisionSystem?.removeCollider(wall);
-    // Untrack through the single write path (walls list + registry + the wall's cells).
-    this.tracking.remove(wall, this.tracking.cellsFor(wall));
+    this.demolition.removeNetworkBuilding(networkId);
   }
 
   // Clean up method
