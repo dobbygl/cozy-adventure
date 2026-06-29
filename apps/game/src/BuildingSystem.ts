@@ -7,6 +7,7 @@ import { BuildHUD } from './BuildHUD.js';
 import { BuildPreview } from './BuildPreview.js';
 import { PlacementController } from './PlacementController.js';
 import { BreakController } from './BreakController.js';
+import { BuildInput } from './BuildInput.js';
 import { BuildTracking } from './BuildTracking.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory } from './inventory.js';
@@ -56,12 +57,7 @@ export class BuildingSystem {
   itemRegistry!: any;
   gridHelper!: any;
   hud!: BuildHUD;
-  keydownHandler!: (e: KeyboardEvent) => void;
-  keyupHandler!: (e: KeyboardEvent) => void;
-  cKeyPressed = false;
-  rKeyPressed = false;
-  vKeyPressed = false;
-  xKeyPressed = false;
+  input: BuildInput;
   /**
    * In multiplayer, Game sets this to emit a place_building command. When present,
    * placement is server-authoritative: emit the command and let the confirmed event
@@ -143,6 +139,8 @@ export class BuildingSystem {
     this.placement = new PlacementController(this);
     // Demolition actions (delete-mode break + network removal), delegated to BreakController.
     this.demolition = new BreakController(this);
+    // Keyboard/mouse input for build mode, delegated to BuildInput.
+    this.input = new BuildInput(this);
 
     // Player reference for grid following
     this.player = null;
@@ -160,7 +158,7 @@ async init() {
     // Initialize level references after level manager is ready
     this.updateLevelReferences();
     
-    this.setupEventListeners();
+    this.input.setupEventListeners();
   }
   
   async loadBuildableObjects() {
@@ -277,204 +275,14 @@ async init() {
     // This function is now OBSOLETE. Grid creation is entirely handled by the LevelManager.
   }
   
-  setupEventListeners() {
-    // Mouse move for preview
-    window.addEventListener('mousemove', (event) => {
-      if (this.isBuilding) {
-        this.updateMousePosition(event);
-        this.updatePreview();
-        // Always update cursor warning position if showing
-        this.resourceManager.updateCursorWarningPosition(this.mouse, this.camera as any);
-      }
-    });
-    
-    // Click to build or delete
-    window.addEventListener('click', (event) => {
-      if (this.isBuilding && !this.isCursorOverUI(event)) {
-        if (this.buildingMode === 'build') {
-          this.buildWall();
-        } else if (this.buildingMode === 'delete') {
-          this.deleteWall();
-        }
-      }
-    });
-    
-    // Key state tracking to prevent rapid toggling
-    this.vKeyPressed = false;
-    this.rKeyPressed = false;
-    this.xKeyPressed = false;
-    this.cKeyPressed = false;
-    
-    // Toggle building mode with V key (changed from B to avoid conflict with backpack)
-    this.keydownHandler = (event) => {
-      if (event.code === 'KeyV' && !this.vKeyPressed) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.vKeyPressed = true;
-        console.log('V key pressed - toggling building mode, current state:', this.isBuilding);
-        this.toggleBuildingMode();
-      }
-      
-      // Rotate wall with R key (only in building mode)
-      if (event.code === 'KeyR' && this.isBuilding && !this.rKeyPressed) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.rKeyPressed = true;
-        this.rotateWall();
-      }
-      
-      // Toggle between build and delete mode with X key
-      if (event.code === 'KeyX' && this.isBuilding && !this.xKeyPressed) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.xKeyPressed = true;
-        this.toggleBuildingTool();
-      }
-      
-      // C key now just focuses the selection screen (since it's always open)
-      if (event.code === 'KeyC' && this.isBuilding && this.buildingMode === 'build' && !this.cKeyPressed) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.cKeyPressed = true;
-        // Selection screen is already open, just ensure it's visible
-        this.showSelectionScreen();
-      }
-      
-      // Cancel building with Escape
-      if (event.code === 'Escape' && this.isBuilding) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.exitBuildingMode();
-      }
-    };
-    
-    this.keyupHandler = (event) => {
-      if (event.code === 'KeyV') {
-        this.vKeyPressed = false;
-      }
-      if (event.code === 'KeyR') {
-        this.rKeyPressed = false;
-      }
-      if (event.code === 'KeyX') {
-        this.xKeyPressed = false;
-      }
-      if (event.code === 'KeyC') {
-        this.cKeyPressed = false;
-      }
-    };
-    
-    document.addEventListener('keydown', this.keydownHandler);
-    document.addEventListener('keyup', this.keyupHandler);
-    console.log('Building system event listeners set up');
-  }
-  
+  // Input lives in BuildInput; thin forwarders keep the cross-callers (game.ts touch input,
+  // BuildPreview's cursor-over-UI check) working unchanged.
   updateMousePosition(event: MouseEvent) {
-    // Convert mouse position to normalized device coordinates
-    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.input.updateMousePosition(event);
   }
-  
+
   isCursorOverUI(event: { clientX: number; clientY: number }) {
-    // Get the element directly under the cursor
-    const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY);
-    if (!elementUnderCursor) return false;
-    // Check if cursor is over any UI elements
-    const uiSelectors = [
-      '#buildingUI',
-      '#selectionScreen', 
-      '#instructions',
-      '#compass',
-      '#heldItemPosition',
-      '#playerPosition',
-      '#playerHeightControl',
-      '#occupiedSlots',
-      '#inventoryContainer',
-      '#resourceWarning'
-    ];
-    
-    // Add inventory-specific selectors
-    const inventorySelectors = [
-      '.inventory-ui',
-      '.hotbar',
-      '.hotbar-slot',
-      '.backpack-overlay',
-      '.backpack-container',
-      '.inventory-slot',
-      '.item-icon',
-      '.item-quantity',
-      '.close-button'
-    ];
-    
-    const allSelectors = [...uiSelectors, ...inventorySelectors];
-    // Check if the element or any of its parents match UI selectors
-    let currentElement: HTMLElement | null = elementUnderCursor as HTMLElement;
-    while (currentElement && currentElement !== document.body) {
-      // Check by ID
-      if (currentElement.id) {
-        for (const selector of allSelectors) {
-          if (selector.startsWith('#') && currentElement.id === selector.substring(1)) {
-            return true;
-          }
-        }
-      }
-      
-      // Check by class names
-      if (currentElement.classList) {
-        for (const selector of allSelectors) {
-          if (selector.startsWith('.')) {
-            const className = selector.substring(1);
-            if (currentElement.classList.contains(className)) {
-              return true;
-            }
-          }
-        }
-      }
-      // Additional check for UI-specific attributes and properties
-      if (currentElement.classList) {
-        const additionalUIClasses = [
-          'object-card', 
-          'ui-element',
-          'dragging',
-          'drag-over',
-          'selected',
-          'slot-number',
-          'section-title',
-          'backpack-header',
-          'backpack-title',
-          'inventory-sections',
-          'hotbar-section',
-          'backpack-grid'
-        ];
-        
-        for (const uiClass of additionalUIClasses) {
-          if (currentElement.classList.contains(uiClass)) {
-            return true;
-          }
-        }
-      }
-      // Check for inventory-specific data attributes
-      if (currentElement.getAttribute) {
-        // Check for inventory data attributes
-        if (currentElement.getAttribute('data-container') || 
-            currentElement.getAttribute('data-index') ||
-            currentElement.getAttribute('data-ui') === 'true' ||
-            Number(currentElement.style.zIndex) > 100) {
-          return true;
-        }
-      }
-      
-      // Check if element is part of inventory system by looking for inventory-related parent
-      if (currentElement.closest && (
-          currentElement.closest('.inventory-ui') ||
-          currentElement.closest('.backpack-overlay') ||
-          currentElement.closest('.hotbar') ||
-          currentElement.closest('[data-container]')
-        )) {
-        return true;
-      }
-      currentElement = currentElement.parentElement;
-    }
-    return false;
+    return this.input.isCursorOverUI(event);
   }
 
   // Build-mode preview ghost lives in BuildPreview; thin forwarder keeps the call sites
@@ -679,14 +487,9 @@ async init() {
   destroy() {
     this.exitBuildingMode();
     
-    // Remove event listeners
-    if (this.keydownHandler) {
-      document.removeEventListener('keydown', this.keydownHandler);
-    }
-    if (this.keyupHandler) {
-      document.removeEventListener('keyup', this.keyupHandler);
-    }
-    
+    // Remove input listeners (keyboard + mouse)
+    this.input.destroy();
+
     // Remove built walls
     this.builtWalls.forEach(wall => {
       this.scene.remove(wall);
