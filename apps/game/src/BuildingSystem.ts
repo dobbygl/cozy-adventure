@@ -3,6 +3,7 @@ import { WallIntersectionHelper } from './WallIntersectionHelper.js';
 import { BuildingResourceManager } from './BuildingResourceManager.js';
 import { BuildableObjectsRegistry } from './BuildableObjectsRegistry.js';
 import { BuildingSaveManager } from './BuildingSaveManager.js';
+import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory, Item } from './inventory.js';
 import type { CollisionSystem } from './CollisionSystem.js';
@@ -802,51 +803,19 @@ updateLevelReferences() {
       return;
     }
 
-    // Create actual wall/object
-    const newWall = currentBuildObject.mesh.clone();
-    newWall.position.copy(buildPosition);
-    newWall.rotation.y = this.currentRotation;
-    
+    // Create the placed mesh via the shared factory: clone the template, place + rotate it,
+    // and stamp the collider/break userData on the root and every mesh child. Single source
+    // of truth shared with the save-restore path (see BuildingMeshFactory).
+    const newWall = createPlacedBuildingMesh(
+      currentBuildObject.mesh,
+      this.selectedBuildObject,
+      buildPosition,
+      this.currentRotation
+    );
+
     // Add to scene first
     this.scene.add(newWall);
-    
-    // Set up collision userData for the main wall object with proper building type
-    newWall.userData = {
-      isCollider: true,
-      colliderType: 'mesh',
-      isBuildingWall: true,
-      isBreakable: true,
-      buildingType: this.selectedBuildObject, // Add the actual building type
-      type: this.selectedBuildObject // Add backup type field
-    };
-    
-    // CRITICAL: Set up collision detection for ALL mesh children with proper positioning
-    newWall.traverse((child: any) => {
-      if (child.isMesh) {
-        // Mark each mesh as a collider
-        child.userData = {
-          isCollider: true,
-          colliderType: 'mesh',
-          isBuildingWall: true,
-          isBreakable: true,
-          buildingType: this.selectedBuildObject, // Add the actual building type
-          type: this.selectedBuildObject // Add backup type field
-        };
-        
-        // Ensure geometry is properly computed for collision
-        if (child.geometry) {
-          child.geometry.computeBoundingBox();
-          child.geometry.computeBoundingSphere();
-        }
-        
-        // Update world matrix for accurate collision detection
-        child.updateMatrixWorld(true);
-      }
-    });
-    
-    // Force update of world matrices
-    newWall.updateMatrixWorld(true);
-    
+
     // Add to collision system - add the root wall object with 'mesh' type for horizontal collision
     if (this.collisionSystem) {
       console.log('Adding wall to collision system...');
