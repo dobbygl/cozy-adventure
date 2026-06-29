@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { BuildingResourceManager } from './BuildingResourceManager.js';
 import { BuildableObjectsRegistry } from './BuildableObjectsRegistry.js';
 import { BuildingSaveManager } from './BuildingSaveManager.js';
-import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
 import { BuildingAnimations } from './BuildingAnimations.js';
 import { BuildHUD } from './BuildHUD.js';
 import { BuildPreview } from './BuildPreview.js';
+import { PlacementController } from './PlacementController.js';
 import { BuildTracking } from './BuildTracking.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory } from './inventory.js';
@@ -39,6 +39,7 @@ export class BuildingSystem {
   wallMesh: THREE.Object3D | null;
   tracking: BuildTracking;
   preview: BuildPreview;
+  placement: PlacementController;
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
   buildingMode: string;
@@ -136,6 +137,8 @@ export class BuildingSystem {
     this.hud = new BuildHUD(this);
     // Build-mode preview ghost (placement/break highlight), delegated to BuildPreview.
     this.preview = new BuildPreview(this);
+    // Placement actions (local build + network materialize), delegated to PlacementController.
+    this.placement = new PlacementController(this);
 
     // Player reference for grid following
     this.player = null;
@@ -510,125 +513,11 @@ async init() {
     ).map((c) => `${c.gx},${c.gz}`);
   }
 
+  // Placement lives in PlacementController; thin forwarder keeps the click-handler caller.
   buildWall() {
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-    if (!this.previewMesh || !currentBuildObject || !currentBuildObject.mesh) return;
-    
-    // Check if player has enough resources
-    if (!this.resourceManager.hasRequiredResources(this.selectedBuildObject)) {
-      this.resourceManager.showResourceWarning(this.mouse, this.camera as any);
-      return;
-    }
-    
-    const buildPosition = this.previewMesh.position.clone();
-    const occupiedCells = this.getOccupiedCells(buildPosition, this.currentRotation);
-    
-    // Enhanced collision detection: Check both cell occupation AND physical mesh intersection
-    const conflictingCells: string[] = [];
-    
-    // 1. Check cell occupation only on current level
-    occupiedCells.forEach(cellKey => {
-      if (this.levelManager.isCellOccupiedOnCurrentLevel(cellKey)) {
-        conflictingCells.push(cellKey);
-      }
-    });
-    
-    // 2. Check cell conflicts only - walls can touch each other
-    const hasPhysicalConflicts = this.checkPhysicalIntersection(buildPosition, this.currentRotation);
-    const overlapsPlayer = this.checkPlayerFootprintIntersection(buildPosition, this.currentRotation);
-    const hasCellConflicts = conflictingCells.length > 0;
-    
-    if (hasCellConflicts || hasPhysicalConflicts || overlapsPlayer) {
-      console.log('❌ Cannot build here - conflicts detected:');
-      console.log('  Build position:', buildPosition);
-      console.log('  Current rotation (degrees):', (this.currentRotation * 180 / Math.PI));
-      
-      if (hasCellConflicts) {
-        console.log('  📋 Cell conflicts:', conflictingCells);
-        console.log('  All occupied cells:', Array.from(this.occupiedCells));
-      }
-      
-      if (hasPhysicalConflicts) {
-        console.log('  🔲 Cell occupation conflicts detected');
-      }
-      
-      if (overlapsPlayer) {
-        console.log('  🧍 Player footprint conflict detected');
-      }
-      
-      return;
-    }
-    
-    console.log('🔨 Building wall at:', buildPosition);
-    console.log('  Claiming cells:', occupiedCells);
-
-    // Multiplayer: placement is server-authoritative. Emit a place_building command
-    // (position + rotation + level; the server derives the footprint cells) and let the
-    // confirmed building_placed event materialize it on every client. The server also
-    // validates the type and CONSUMES the cost, returning an inventory_delta — so we do
-    // NOT deduct locally here (that would double-charge). The hasRequiredResources()
-    // gate above is a courtesy pre-check; the server is authoritative. In local mode
-    // requestPlace is null and we build directly (consuming resources ourselves).
-    if (this.requestPlace) {
-      this.requestPlace({
-        registryType: this.selectedBuildObject,
-        position: { x: buildPosition.x, y: buildPosition.y, z: buildPosition.z },
-        rotation: { x: 0, y: this.currentRotation, z: 0 },
-        level: this.levelManager.currentLevel,
-      });
-      return;
-    }
-
-    // Create the placed mesh via the shared factory: clone the template, place + rotate it,
-    // and stamp the collider/break userData on the root and every mesh child. Single source
-    // of truth shared with the save-restore path (see BuildingMeshFactory).
-    const newWall = createPlacedBuildingMesh(
-      currentBuildObject.mesh,
-      this.selectedBuildObject,
-      buildPosition,
-      this.currentRotation
-    );
-
-    // Add to scene first
-    this.scene.add(newWall);
-
-    // Add to collision system - add the root wall object with 'mesh' type for horizontal collision
-    if (this.collisionSystem) {
-      console.log('Adding wall to collision system...');
-      console.log('Wall position:', newWall.position);
-      console.log('Wall has mesh children:', newWall.children.filter((child: any) => child.isMesh).length);
-      
-      // Add the wall object itself to collision system with 'mesh' type for wall collision
-      this.collisionSystem.addCollider(newWall, 'mesh');
-      
-      console.log('Wall added to collision system. Total colliders:', this.collisionSystem.colliders.length);
-      
-      // Debug: Log the wall's bounding box
-      const box = new THREE.Box3().setFromObject(newWall);
-      console.log('Wall bounding box:', box);
-    } else {
-      console.warn('Collision system not available when building wall');
-    }
-    
-    // Consume resources from inventory
-    this.resourceManager.consumeResources(this.selectedBuildObject);
-    
-    // Record the building + reserve its footprint cells through the single write path.
-    this.tracking.add(newWall, this.selectedBuildObject, occupiedCells);
-
-    // Visual debug indicators (build-mode only) for the cells it now holds.
-    if (this.showDebugIndicators) {
-      occupiedCells.forEach((cellKey) => this.createDebugIndicator(cellKey));
-    }
-    
-    // Start placement animation
-    this.animations.playPlacementAnimation(newWall);
-    
-    console.log(`Built wall at ${buildPosition.x}, ${buildPosition.z} with rotation ${this.currentRotation.toFixed(2)}`);
-    console.log('Wall userData:', newWall.userData);
-    console.log('Wall has mesh children:', newWall.children.filter((child: any) => child.isMesh).length);
+    this.placement.buildWall();
   }
-  
+
   rotateWall() {
     // Cycle through rotation steps
     this.currentRotationIndex = (this.currentRotationIndex + 1) % this.rotationSteps.length;
@@ -881,12 +770,7 @@ async init() {
    * (the mesh position is exact); the server remains authoritative for conflicts.
    */
   materializeNetworkBuilding(building: BuildingState): void {
-    this.saveManager.restoreBuilding({
-      type: building.registryType,
-      position: building.position,
-      rotation: building.rotation.y,
-      networkId: building.networkId,
-    });
+    this.placement.materializeNetworkBuilding(building);
   }
 
   /**
