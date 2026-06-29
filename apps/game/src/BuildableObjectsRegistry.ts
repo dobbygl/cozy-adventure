@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { BUILDABLES } from '@cozy/shared';
 
 /** Number of grid cells a buildable occupies. */
 export interface CellSize {
@@ -17,6 +18,57 @@ export interface BuildableDefinition {
   description: string;
   placementOffset?: { x: number; z: number };
 }
+
+/**
+ * Client-only presentation for a buildable: the model to load and how it reads in the
+ * build menu. The authoritative gameplay numbers (wood cost + grid footprint) are NOT
+ * here — they come from the shared BUILDABLES catalog (packages/shared/buildings.ts),
+ * the single source of truth the server also validates against. objectDefinitions is
+ * assembled by merging this presentation onto that catalog, so cost/footprint live in
+ * exactly one place and the client and server cannot disagree.
+ */
+export interface BuildablePresentation {
+  name: string;
+  modelUrl: string;
+  scale: number;
+  description: string;
+  placementOffset?: { x: number; z: number };
+}
+
+/** Presentation per buildable, keyed by the same registry type as BUILDABLES. */
+const BUILDABLE_PRESENTATION: Record<string, BuildablePresentation> = {
+  wall: {
+    name: 'Wall',
+    modelUrl: 'assets/build_wall.glb',
+    scale: 2.0,
+    description: 'Basic wooden wall for protection',
+  },
+  spikedWall: {
+    name: 'Spiked Wall',
+    modelUrl: 'assets/build_wall_spiked.glb',
+    scale: 2.0,
+    description: 'Reinforced wall with spikes for extra protection',
+  },
+  farmingPlot: {
+    name: 'Farming Plot',
+    modelUrl: 'assets/farming_plot.glb',
+    scale: 2.0,
+    description: 'A tilled plot of land for growing crops',
+  },
+  floor: {
+    name: 'Floor',
+    modelUrl: 'assets/build_floor_ceiling.glb',
+    scale: 2.0,
+    description: 'Wooden floor panel for building foundations',
+  },
+  ramp: {
+    name: 'Ramp',
+    modelUrl: 'assets/build_ramp.glb',
+    scale: 2.0,
+    placementOffset: { x: -1, z: -1 }, // Offset to center properly in grid
+    description: 'Sloped ramp for accessing different building levels',
+  },
+};
 
 /** A buildable definition with its loaded mesh attached. */
 export interface BuildableObject extends BuildableDefinition {
@@ -50,50 +102,24 @@ export class BuildableObjectsRegistry {
     this.loadingPromises = [];
     this.builtObjectsByType = new Map(); // Track built objects by type
 
-    // Define all buildable objects here
-    this.objectDefinitions = {
-      wall: {
-        name: 'Wall',
-        modelUrl: 'assets/build_wall.glb',
-        scale: 2.0,
-        cost: { wood: 10 },
-        cellSize: { width: 3, height: 1 }, // Occupies 3x1 cells
-        description: 'Basic wooden wall for protection',
-      },
-      spikedWall: {
-        name: 'Spiked Wall',
-        modelUrl: 'assets/build_wall_spiked.glb',
-        scale: 2.0,
-        cost: { wood: 15 },
-        cellSize: { width: 3, height: 1 }, // Occupies 3x1 cells
-        description: 'Reinforced wall with spikes for extra protection',
-      },
-      farmingPlot: {
-        name: 'Farming Plot',
-        modelUrl: 'assets/farming_plot.glb',
-        scale: 2.0,
-        cost: { wood: 5 },
-        cellSize: { width: 3, height: 7 }, // Occupies 3x7 cells (21 cells total)
-        description: 'A tilled plot of land for growing crops',
-      },
-      floor: {
-        name: 'Floor',
-        modelUrl: 'assets/build_floor_ceiling.glb',
-        scale: 2.0,
-        cost: { wood: 8 },
-        cellSize: { width: 4, height: 4 }, // Occupies 4x4 cells (16 cells total)
-        description: 'Wooden floor panel for building foundations',
-      },
-      ramp: {
-        name: 'Ramp',
-        modelUrl: 'assets/build_ramp.glb',
-        scale: 2.0,
-        cost: { wood: 12 },
-        cellSize: { width: 3, height: 1 }, // Occupies 3x1 cells (3 cells total)
-        placementOffset: { x: -1, z: -1 }, // Offset to center properly in grid
-        description: 'Sloped ramp for accessing different building levels',
-      },
-    };
+    // Assemble the definitions by merging client presentation onto the shared catalog:
+    // BUILDABLES is the single source of cost + footprint (kept in lockstep with the
+    // server), and BUILDABLE_PRESENTATION adds the model/scale/description. Iterating
+    // BUILDABLES makes the shared catalog drive which buildables exist; a shared entry
+    // with no presentation is a wiring error, surfaced loudly here.
+    this.objectDefinitions = {};
+    for (const [key, shared] of Object.entries(BUILDABLES)) {
+      const presentation = BUILDABLE_PRESENTATION[key];
+      if (!presentation) {
+        console.error(`BuildableObjectsRegistry: no presentation defined for buildable "${key}"`);
+        continue;
+      }
+      this.objectDefinitions[key] = {
+        ...presentation,
+        cost: { ...shared.cost },
+        cellSize: { ...shared.footprint },
+      };
+    }
   }
 
   // Load all buildable object models
