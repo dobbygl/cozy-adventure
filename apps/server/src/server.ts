@@ -430,6 +430,10 @@ export class GameServer {
       session.state = 'closed';
       const playerId = session.playerId;
       this.broadcast({ t: 'peer_left', playerId });
+      // Capture the last avatar transform into the player document before persisting, so
+      // a reload/reconnect resumes at the real position instead of the spawn origin. This
+      // also updates the in-memory player reused for a within-window reconnect's snapshot.
+      this.captureAvatarIntoPlayer(session);
       // Persist progress now (so it survives even if the reconnect window lapses);
       // if the world just emptied, persist it too (FR-022).
       void this.persistPlayer(playerId);
@@ -480,9 +484,28 @@ export class GameServer {
 
   private async persistAll(): Promise<void> {
     await this.persistWorld();
+    // Capture the current avatar transform of every connected player before the periodic
+    // save, so a crash (no clean onClose) still persists a recent position, not the spawn.
+    for (const session of this.sessions.activeSessions()) {
+      this.captureAvatarIntoPlayer(session);
+    }
     for (const playerId of this.players.keys()) {
       await this.persistPlayer(playerId);
     }
+  }
+
+  /**
+   * Fold a session's last-known avatar transform into its player document. The avatar is
+   * tracked transiently per relay tick (onAvatarState); the player document is what gets
+   * persisted and replayed on join, so without this the stored position is always the
+   * spawn origin and reconnecting players teleport back to it.
+   */
+  private captureAvatarIntoPlayer(session: Session): void {
+    if (!session.playerId || !session.avatar) return;
+    const player = this.players.get(session.playerId);
+    if (!player) return;
+    player.position = { ...session.avatar.position };
+    player.rotation = { ...session.avatar.rotation };
   }
 
   // --- helpers ---

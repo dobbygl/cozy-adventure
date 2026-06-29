@@ -53,4 +53,34 @@ describe('P2 persistence', () => {
     b.close();
     await ctxB.server.stop();
   });
+
+  it('captures the avatar position into the player document and restores it across a restart', async () => {
+    const store = new MemoryStore();
+
+    // --- session 1: report a position away from spawn, then shut down (persists) ---
+    const ctxA = await startTestServer({}, store);
+    const { c: a, joined: ja } = await joinClient(ctxA.url);
+    const { playerId, token } = ja;
+    // A fresh player starts at the origin; the server only learns our position from avatar_state.
+    expect(ja.player.position).toEqual({ x: 0, y: 0, z: 0 });
+
+    const pos = { x: 12.5, y: 0, z: -7.25 };
+    const rot = { x: 0, y: 1.5, z: 0 };
+    a.send({ t: 'avatar_state', position: pos, rotation: rot, movement: 'idle', heldItemId: null });
+    // Ordering barrier: a pong proves the server already processed the prior avatar_state
+    // (same connection, in-order) before we stop and persist.
+    a.send({ t: 'keepalive' });
+    await a.waitFor('pong');
+
+    await ctxA.server.stop(); // persistAll -> captureAvatarIntoPlayer -> store
+
+    // --- session 2: fresh server, same store: we resume where we were, not at spawn ---
+    const ctxB = await startTestServer({}, store);
+    const { c: b, joined: jb } = await joinClient(ctxB.url, { playerId, token });
+    expect(jb.player.position).toEqual(pos);
+    expect(jb.player.rotation).toEqual(rot);
+
+    b.close();
+    await ctxB.server.stop();
+  });
 });

@@ -1,6 +1,6 @@
 import { sanitizeDisplayName, type PlayerState } from '@cozy/shared';
 
-/** A brand-new player's default state (multiplayer starts fresh in v1). */
+/** A brand-new player's default state. */
 export function createDefaultPlayer(
   playerId: string,
   displayName?: string,
@@ -17,7 +17,10 @@ export function createDefaultPlayer(
     position: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
     health: { current: 5, max: 5 },
-    inventory: { backpack: {}, hotbar: {}, selectedSlot: 0 },
+    // Starter kit: the wooden axe in hotbar slot 0. The server is authoritative for the
+    // inventory, and the client adopts this on join, so the starter item must live HERE
+    // (not only client-side) or a fresh player would join with an empty bag.
+    inventory: { backpack: {}, hotbar: { 0: { itemId: 'axe', quantity: 1 } }, selectedSlot: 0 },
     selectedSlot: 0,
   };
 }

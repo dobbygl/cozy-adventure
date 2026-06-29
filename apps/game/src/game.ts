@@ -18,6 +18,7 @@ import { SaveSystem } from './SaveSystem.js';
 import { InGameUI } from './InGameUI.js';
 import { LoadingScreen } from './LoadingScreen.js';
 import { randomWorldSeed } from '@cozy/shared';
+import type { RejectReason, PlayerState, InventoryState } from '@cozy/shared';
 import { InputSchemeManager } from './input/scheme.js';
 import { TouchInput } from './input/touch.js';
 import { TouchControls } from './input/TouchControls.js';
@@ -74,6 +75,14 @@ export class Game {
   sessionMode: 'local' | 'network';
   /** Set when the server kicks us (replaced/timeout/shutdown), to suppress auto-reconnect. */
   networkKicked: boolean;
+  /**
+   * The server's authoritative player document from the join handshake (multiplayer):
+   * inventory + position the client adopts so a reload/reconnect continues where we were.
+   * Null in single-player. Read once during startGame, after the world is built.
+   */
+  serverPlayer: PlayerState | null;
+  /** Re-entrancy guard for handleNetworkDrop: a failed reconnect's socket close must not relaunch it. */
+  private reconnecting = false;
   /** Built in createSampleItems() during startGame(), before any read. */
   itemRegistry!: Record<string, Item>;
 
@@ -128,6 +137,7 @@ export class Game {
     this.network = null;
     this.sessionMode = 'local';
     this.networkKicked = false;
+    this.serverPlayer = null;
 
     // Store game instance globally for slider access
     (window as any).gameInstance = this;
@@ -220,6 +230,11 @@ export class Game {
           // Server-authoritative inventory change (chop/pickup/drop): reflect it in
           // our local inventory. Closes the resource loop in network mode.
           onInventoryDelta: (itemId, delta) => this.applyInventoryDelta(itemId, delta),
+          // A command the server refused (placement, harvest, pickup, drop). The world is
+          // server-authoritative and applies on the confirmed event, so a rejection means
+          // nothing happened — without surfacing it the action just silently does nothing
+          // (e.g. a build click that places no building). Log the reason and tell the player.
+          onCommandRejected: (_seq, reason) => this.onCommandRejected(reason),
           // Unexpected drop (not our own destroy()): try to reconnect in place.
           onClose: () => void this.handleNetworkDrop(),
           // A kick is intentional (replaced/timeout/shutdown): don't auto-reconnect.
@@ -247,6 +262,11 @@ export class Game {
       // Persist the server-issued identity so a reload/reconnect recovers this same
       // character (and proves ownership via the token). Safe to overwrite each join.
       setStoredIdentity(joined.playerId, joined.token);
+      // The server is authoritative for our inventory and position; stash its player
+      // document so we can adopt it once the world is built (applyServerPlayerState),
+      // instead of starting from the local defaults. This is what makes a reload
+      // continue where we were rather than respawning empty at the origin.
+      this.serverPlayer = joined.player;
     }
 
     // Create and show loading screen first
@@ -356,6 +376,11 @@ export class Game {
     
     // Handle window resize
     this.setupEventListeners();
+
+    // Multiplayer: adopt the server-authoritative inventory + position BEFORE we begin
+    // sampling/relaying our avatar, so a reload/reconnect resumes where we left off
+    // (and the first avatar_state we send reports the recovered position, not the origin).
+    this.applyServerPlayerState();
 
     // Multiplayer: the scene is built, so start materializing remote avatars
     // (peers from the join, plus any who arrived during loading). No-op in local mode.
@@ -952,6 +977,98 @@ addSampleItemsToInventory() {
   }
 
   /**
+   * The server refused a world command (placement/harvest/pickup/drop). In network mode
+   * the world only changes on the confirmed event, so a rejection means the action did
+   * nothing at all — the click looked dead. Log the exact reason (for diagnosis) and show
+   * the player a short notice so the failure is legible instead of silent.
+   */
+  private onCommandRejected(reason: RejectReason): void {
+    console.warn(`Server rejected command: ${reason}`);
+    const messages: Record<RejectReason, string> = {
+      out_of_range: 'Demasiado lejos. Acércate para construir o interactuar.',
+      cell_occupied: 'Ese espacio ya está ocupado.',
+      insufficient_resources: 'No tienes suficientes recursos.',
+      inventory_full: 'Inventario lleno.',
+      already_consumed: 'Eso ya no está disponible.',
+      unknown_entity: 'Objetivo no válido.',
+      invalid: 'Acción no permitida.',
+    };
+    this.inGameUI?.showNotification(messages[reason] ?? 'Acción rechazada por el servidor.', 'error');
+  }
+
+  /**
+   * Adopt the server's authoritative player document (multiplayer): replace the local
+   * starting inventory with the server's, and place the avatar at the server's stored
+   * position/rotation. The server owns this state, so on a reload/reconnect this is what
+   * makes us resume where we were instead of respawning empty at the origin. No-op in
+   * single-player (serverPlayer is null) or if the world isn't built yet.
+   */
+  private applyServerPlayerState(): void {
+    const sp = this.serverPlayer;
+    if (!sp) return;
+
+    // Inventory: the server's sparse {slot: stack} records map onto the client's slot
+    // arrays. deserialize() clears the current bag first, so the local starter kit added
+    // during initializeInventory is replaced by the authoritative one. Guard: only adopt
+    // when the server actually has items — an empty server bag means either a legacy/
+    // pre-deploy fresh player or nothing to restore, and we'd rather keep the local
+    // starter axe than strand the player empty-handed.
+    const serverHasItems =
+      Object.keys(sp.inventory.hotbar).length > 0 || Object.keys(sp.inventory.backpack).length > 0;
+    if (this.inventory && this.itemRegistry && serverHasItems) {
+      this.inventory.deserialize(this.serializeServerInventory(sp.inventory), this.itemRegistry);
+      // Safety net: never strand the player without the core tool. deserialize() wipes the
+      // local starter kit, so a character persisted with resources but no axe (e.g. one
+      // saved before the server's starter kit existed) would lose the ability to chop.
+      // Re-add the axe if the adopted bag lacks one. The axe is a tool the server never
+      // charges for, so a client-only copy here doesn't desync any server-authoritative op.
+      if (this.itemRegistry['axe'] && this.inventory.getItemCount('axe') === 0) {
+        this.inventory.addItem(this.itemRegistry['axe'], 1);
+      }
+      // Fire the held-item update for the restored selection (deserialize sets the field
+      // but does not emit the selection callback).
+      this.inventory.selectHotbarSlot(this.inventory.selectedHotbarSlot);
+    }
+
+    // Position/rotation: mirror SaveSystem.restorePlayerData — set the mesh transform and
+    // let the character controller follow it. Skip a brand-new player whose server position
+    // is still the origin default: forcing (0,0,0) (esp. y) could sink them into terrain, so
+    // leave the natural client spawn untouched. A returning player has a real, non-origin
+    // transform (they moved before disconnecting).
+    const atOrigin = sp.position.x === 0 && sp.position.y === 0 && sp.position.z === 0;
+    if (this.player?.mesh && !atOrigin) {
+      this.player.mesh.position.set(sp.position.x, sp.position.y, sp.position.z);
+      if (sp.rotation) {
+        this.player.mesh.rotation.set(sp.rotation.x, sp.rotation.y, sp.rotation.z);
+      }
+    }
+  }
+
+  /**
+   * Convert the server's InventoryState (sparse slot records) into the client's
+   * SerializedInventory (dense slot arrays) so Inventory.deserialize can consume it.
+   */
+  private serializeServerInventory(inv: InventoryState): {
+    hotbar: ({ itemId: string; quantity: number } | null)[];
+    backpack: ({ itemId: string; quantity: number } | null)[];
+    selectedHotbarSlot: number;
+  } {
+    const toArray = (section: Record<number, { itemId: string; quantity: number }>, size: number) => {
+      const arr: ({ itemId: string; quantity: number } | null)[] = new Array(size).fill(null);
+      for (const [slot, stack] of Object.entries(section)) {
+        const i = Number(slot);
+        if (i >= 0 && i < size) arr[i] = { itemId: stack.itemId, quantity: stack.quantity };
+      }
+      return arr;
+    };
+    return {
+      hotbar: toArray(inv.hotbar, this.inventory!.hotbarSize),
+      backpack: toArray(inv.backpack, this.inventory!.backpackSize),
+      selectedHotbarSlot: inv.selectedSlot,
+    };
+  }
+
+  /**
    * Apply a server-authoritative inventory change (multiplayer). Items granted by
    * the server (chopped wood, picked-up drops) arrive here because the network
    * command paths intentionally do not mutate the inventory locally, so this is the
@@ -971,13 +1088,30 @@ addSampleItemsToInventory() {
    * client stays alive (no crash); a graceful return-to-menu is follow-up polish.
    */
   private async handleNetworkDrop(): Promise<void> {
-    if (!this.network || this.networkKicked) return;
+    // Re-entrancy guard: a failed reconnect() closes its own socket, which fires onClose
+    // again — without this flag that re-enters here and spins an infinite reconnect storm
+    // (the exact symptom seen in the server logs when a stored token went stale).
+    if (!this.network || this.networkKicked || this.reconnecting) return;
+    this.reconnecting = true;
     console.warn('Connection lost; attempting to reconnect...');
     try {
       await this.network.reconnect();
       console.log('Reconnected to the server.');
     } catch (err) {
-      console.error('Reconnect failed:', err);
+      const code = (err as { code?: string }).code;
+      if (code === 'identity') {
+        // Our stored token is no longer valid (e.g. the server's AUTH_SECRET rotated).
+        // Reconnecting in place can never succeed, so stop the loop, drop the stale
+        // identity (a reload then rejoins fresh), and tell the player.
+        console.warn('Reconnect rejected (identity); clearing stored identity. Reload to rejoin.');
+        clearStoredIdentity();
+        this.networkKicked = true;
+        this.inGameUI?.showNotification('Sesión caducada. Recarga la página para volver a entrar.', 'error');
+      } else {
+        console.error('Reconnect failed:', err);
+      }
+    } finally {
+      this.reconnecting = false;
     }
   }
 
