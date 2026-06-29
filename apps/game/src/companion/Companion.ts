@@ -33,26 +33,32 @@ export abstract class Companion {
   wanderRadius: number;
   protected loader: GLTFLoader;
   /**
-   * Lazily resolves the game singleton. Centralized here so every port/provider
-   * sees the live systems (created after the companion, swapped at runtime).
-   * TODO(phase 7): inject the game systems instead of reading the global.
+   * Lazily resolves the host game. Centralized here, and called fresh each time,
+   * so every port/provider sees the live systems (which may be created after the
+   * companion and swapped at runtime). Injected by the game; defaults to the
+   * window singleton for callers that don't pass one.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected readonly getGame: () => any;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(scene: THREE.Scene, player: any, definition: CompanionDefinition) {
+  constructor(
+    scene: THREE.Scene,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    player: any,
+    definition: CompanionDefinition,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getGame: () => any = () => (window as any).gameInstance,
+  ) {
     this.scene = scene;
     this.player = player;
     this.definition = definition;
+    this.getGame = getGame;
 
     this.speed = definition.speed;
     this.followDistance = definition.followDistance;
     this.minFollowDistance = definition.minFollowDistance;
     this.wanderRadius = definition.wanderRadius;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.getGame = () => (window as any).gameInstance;
     this.physics = new CompanionPhysics(() => this.getGame()?.collisionSystem ?? null, {
       gravity: definition.gravity,
       groundLevel: definition.groundLevel,

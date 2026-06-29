@@ -35,9 +35,14 @@ export class DogCompanion extends Companion {
   delivery: DeliveryService;
   droppedItems: DroppedItemsPort;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(scene: THREE.Scene, player: any) {
-    super(scene, player, DOG_DEFINITION);
+  constructor(
+    scene: THREE.Scene,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    player: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getGame?: () => any,
+  ) {
+    super(scene, player, DOG_DEFINITION, getGame);
 
     // Fetch/delivery talks to the rest of the game through ports (see base
     // getGame for the late-binding rationale).
@@ -378,8 +383,7 @@ export class DogCompanion extends Companion {
     const existsInScene = this.scene.children.includes(item);
 
     // Check if item exists in game's pickupable items array (diagnostics only)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const existsInPickupable = (window as any).gameInstance?.pickupableItems?.includes(item) || false;
+    const existsInPickupable = this.getGame()?.pickupableItems?.includes(item) || false;
 
     const isValid = existsInDroppedItems && existsInScene;
 
