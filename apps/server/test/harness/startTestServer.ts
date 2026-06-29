@@ -3,6 +3,7 @@ import { WebSocketTransport } from '../../src/transport/WebSocketTransport';
 import { MemoryStore } from '../../src/persistence/MemoryStore';
 import type { Store } from '../../src/persistence/Store';
 import { SessionManager } from '../../src/session/SessionManager';
+import { createAuthProvider } from '../../src/auth/createAuthProvider';
 import { Metrics } from '../../src/metrics';
 import { loadConfig, type Config } from '../../src/config';
 import { logger } from '../../src/log';
@@ -29,7 +30,8 @@ export async function startTestServer(
   const metrics = new Metrics();
   const transport = new WebSocketTransport(config, metrics, logger);
   const sessions = new SessionManager();
-  const server = new GameServer({ config, transport, store, metrics, logger, sessions });
+  const auth = createAuthProvider(config);
+  const server = new GameServer({ config, transport, store, metrics, logger, sessions, auth });
   await server.start();
   return { server, url: `ws://127.0.0.1:${server.port}`, store, config, metrics };
 }

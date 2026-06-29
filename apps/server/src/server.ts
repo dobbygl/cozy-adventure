@@ -9,8 +9,6 @@ import { Session } from './session/Session';
 import { parseClientMessage } from './protocol/schemas';
 import { World } from './world/World';
 import type { AuthProvider } from './auth/AuthProvider';
-import { NullAuthProvider } from './auth/NullAuthProvider';
-import { PasswordAuthProvider } from './auth/PasswordAuthProvider';
 import { issueToken, verifyToken } from './auth/identity';
 import { createDefaultPlayer } from './player';
 import { validateAvatarMove } from './session/avatarRelay';
@@ -36,6 +34,7 @@ export interface GameServerDeps {
   metrics: Metrics;
   logger: Logger;
   sessions: SessionManager;
+  auth: AuthProvider;
 }
 
 /**
@@ -69,9 +68,7 @@ export class GameServer {
     this.metrics = deps.metrics;
     this.logger = deps.logger;
     this.sessions = deps.sessions;
-    this.auth = this.config.serverPassword
-      ? new PasswordAuthProvider(this.config.serverPassword)
-      : new NullAuthProvider();
+    this.auth = deps.auth;
   }
 
   get port(): number {
