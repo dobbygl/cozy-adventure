@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ItemStack } from './inventory.js';
-import { DEFAULT_WORLD_SEED } from '@cozy/shared';
+import { DEFAULT_WORLD_SEED, buildingFootprintCells } from '@cozy/shared';
+import { buildingColliderUserData } from './BuildingMeshFactory.js';
 import { getSelectedPlayerModel, setSelectedPlayerModel } from './playerModel.js';
 
 /** Stored save categories keyed by their string id. */
@@ -972,33 +973,25 @@ export class SaveSystem {
     // Set visibility
     building.visible = buildingInfo.visible !== false;
     
-    // Restore userData with breakable state
+    // Re-apply the collider/break userData (shared shape) on top of any saved userData. The
+    // mesh already came stamped from createBuildingMesh; this preserves save-specific extras
+    // (buildingInfo.userData) and keeps the legacy save path explicit about what it restores.
     building.userData = {
-      buildingType: buildingType,
-      type: buildingType,
-      isCollider: true,
-      colliderType: 'mesh',
-      isBuildingWall: true,
-      isBreakable: true,
+      ...buildingColliderUserData(buildingType),
       ...buildingInfo.userData
     };
-    
+
     // Set UUID if available
     if (buildingInfo.uuid) {
       building.uuid = buildingInfo.uuid;
     }
-    
+
     // Set up breakable state for all child meshes
     building.traverse((child: any) => {
       if (child.isMesh) {
         child.userData = {
           ...child.userData,
-          isCollider: true,
-          colliderType: 'mesh',
-          isBuildingWall: true,
-          isBreakable: true,
-          buildingType: buildingType,
-          type: buildingType
+          ...buildingColliderUserData(buildingType)
         };
         if (child.geometry) {
           child.geometry.computeBoundingBox();
@@ -1073,108 +1066,39 @@ export class SaveSystem {
       });
     }
   }
-  // Helper method to calculate occupied cells for a restored building
+  // Calculate the grid cells a restored building occupies, via the shared footprint math
+  // (the same buildingFootprintCells the live placement and the server use), so a restored
+  // building reserves exactly the cells it claimed when placed — no separate copy of the
+  // rotation/grid math to drift. Returns "gx,gz" keys; the level is tracked separately by
+  // LevelManager, matching BuildingSystem.getOccupiedCells.
   getOccupiedCellsForBuilding(buildingInfo: any, buildingSystem: any): string[] {
-    const position = new THREE.Vector3(
-      buildingInfo.position.x,
-      buildingInfo.position.y,
-      buildingInfo.position.z
-    );
-    
-    // Get building definition to determine cell size
     const registry = this.gameInstance.buildingSystem.objectsRegistry;
-    let buildingDef = null;
-    
-    if (registry && registry.buildableObjects) {
-      buildingDef = registry.buildableObjects[buildingInfo.type];
-    }
-    
-    const cellSize = buildingDef ? buildingDef.cellSize : 1.0;
+    const cellSize = registry?.buildableObjects?.[buildingInfo.type]?.cellSize;
+    const footprint =
+      cellSize && typeof cellSize === 'object'
+        ? { width: cellSize.width, height: cellSize.height }
+        : { width: 1, height: 1 };
     const gridSize = buildingSystem.gridSize || 2.0;
-    
-    // Calculate occupied cells similar to BuildingSystem.getOccupiedCells
-    const gridX = Math.round((position.x + 0.001) / gridSize);
-    const gridZ = Math.round((position.z + 0.001) / gridSize);
-    const occupiedCells: string[] = [];
-    
-    // Handle different cell size formats
-    let cellWidth, cellHeight;
-    if (typeof cellSize === 'object' && cellSize.width && cellSize.height) {
-      cellWidth = cellSize.width;
-      cellHeight = cellSize.height;
-    } else {
-      cellWidth = cellSize;
-      cellHeight = 1.0;
-    }
-    
-    // Calculate cell pattern based on rotation
+
     let rotationY = 0;
     if (buildingInfo.rotation) {
-      if (typeof buildingInfo.rotation === 'object') {
-        rotationY = buildingInfo.rotation.y || 0;
-      } else if (typeof buildingInfo.rotation === 'number') {
-        rotationY = buildingInfo.rotation;
-      }
+      rotationY =
+        typeof buildingInfo.rotation === 'object'
+          ? buildingInfo.rotation.y || 0
+          : buildingInfo.rotation;
     }
-    
-    const normalizedRotation = Math.round((rotationY * 180 / Math.PI) / 90) * 90;
-    const positiveRotation = ((normalizedRotation % 360) + 360) % 360;
-    
-    this.calculateRotatedCellsForRestore(gridX, gridZ, cellWidth, cellHeight, positiveRotation, occupiedCells);
-    
-    return occupiedCells;
-  }
-  // Helper method for calculating rotated cells during restore
-  calculateRotatedCellsForRestore(
-    centerX: number,
-    centerZ: number,
-    width: number,
-    height: number,
-    rotation: number,
-    occupiedCells: string[]
-  ) {
-    const halfWidth = Math.floor(width / 2);
-    const halfHeight = Math.floor(height / 2);
-    
-    // Generate cell offsets in local space
-    const localCells = [];
-    for (let dx = -halfWidth; dx < width - halfWidth; dx++) {
-      for (let dz = -halfHeight; dz < height - halfHeight; dz++) {
-        localCells.push({ x: dx, z: dz });
-      }
-    }
-    
-    // Apply rotation transformation
-    localCells.forEach(localCell => {
-      let rotatedX, rotatedZ;
-      
-      switch (rotation) {
-        case 0:
-          rotatedX = localCell.x;
-          rotatedZ = localCell.z;
-          break;
-        case 90:
-          rotatedX = -localCell.z;
-          rotatedZ = localCell.x;
-          break;
-        case 180:
-          rotatedX = -localCell.x;
-          rotatedZ = -localCell.z;
-          break;
-        case 270:
-          rotatedX = localCell.z;
-          rotatedZ = -localCell.x;
-          break;
-        default:
-          rotatedX = localCell.x;
-          rotatedZ = localCell.z;
-      }
-      
-      const worldX = centerX + rotatedX;
-      const worldZ = centerZ + rotatedZ;
-      const cellKey = `${worldX},${worldZ}`;
-      occupiedCells.push(cellKey);
-    });
+
+    return buildingFootprintCells(
+      footprint,
+      {
+        x: buildingInfo.position.x,
+        y: buildingInfo.position.y,
+        z: buildingInfo.position.z,
+      },
+      rotationY,
+      0,
+      gridSize
+    ).map((c) => `${c.gx},${c.gz}`);
   }
   // Helper method to calculate which level a building is on based on Y position
   calculateBuildingLevel(yPosition: number, levelManager: any): number {

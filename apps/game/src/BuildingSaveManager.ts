@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
 
 /** Serialized form of a placed building object in a save file. */
 export interface SavedBuildObject {
@@ -159,42 +160,14 @@ export class BuildingSaveManager {
       return null;
     }
 
-    // Clone the mesh
-    const newBuilding = buildObject.mesh.clone();
-    newBuilding.position.copy(position);
-    newBuilding.rotation.y = rotation;
-
-    // Set up collision userData
-    newBuilding.userData = {
-      isCollider: true,
-      colliderType: 'mesh',
-      isBuildingWall: true,
-      isBreakable: true,
-      buildingType: actualBuildingType,
-      type: actualBuildingType,
-    };
-
-    // Set up collision for all mesh children
-    newBuilding.traverse((child: any) => {
-      if (child.isMesh) {
-        child.userData = {
-          isCollider: true,
-          colliderType: 'mesh',
-          isBuildingWall: true,
-          isBreakable: true,
-          buildingType: actualBuildingType,
-          type: actualBuildingType,
-        };
-        if (child.geometry) {
-          child.geometry.computeBoundingBox();
-          child.geometry.computeBoundingSphere();
-        }
-        child.updateMatrixWorld(true);
-      }
-    });
-
-    newBuilding.updateMatrixWorld(true);
-    return newBuilding;
+    // Clone + stamp via the shared factory (same code path the live placement uses), so a
+    // restored building is byte-for-byte the same kind of collidable, breakable mesh.
+    return createPlacedBuildingMesh(
+      buildObject.mesh,
+      actualBuildingType as string,
+      position,
+      rotation
+    );
   }
 
   // Restore a building from saved data

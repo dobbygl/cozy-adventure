@@ -216,12 +216,6 @@ export class BuildableObjectsRegistry {
     return obj ? obj.cost : null;
   }
 
-  // Get object cell size
-  getObjectCellSize(key: string): CellSize | number {
-    const obj = this.objectDefinitions[key];
-    return obj ? obj.cellSize : 1.0;
-  }
-
   // Object type tracking methods
   registerBuiltObject(objectType: string, objectInstance: THREE.Object3D): void {
     if (!this.builtObjectsByType.has(objectType)) {
