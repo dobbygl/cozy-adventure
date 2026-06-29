@@ -70,6 +70,8 @@ export function applyCommand(ctx: CommandContext, cmd: WorldCommand, now: number
       return pickupDrop(ctx, cmd, now);
     case 'drop_item':
       return dropItem(ctx, cmd, now);
+    case 'remove_building':
+      return removeBuilding(ctx, cmd, now);
   }
 }
 
@@ -203,6 +205,41 @@ function placeBuilding(
   const diff: WorldDiff = { type: 'building_placed', entity, at: now };
   ctx.world.recordDiff(diff);
   return { ok: true, diff, inventoryDelta: { itemId: 'wood', delta: -def.cost.wood } };
+}
+
+/**
+ * Demolish a building by networkId, server-authoritative (the network-mode counterpart of
+ * single-player's delete mode). The server owns the world map, so removal round-trips
+ * through it: look the building up first — an unknown id is rejected (e.g. a second
+ * delete-click landing before the first removal has broadcast back), and crucially the
+ * lookup happens BEFORE recording, since recordDiff appends to the canonical log
+ * unconditionally and we don't want a no-op building_removed in the history. Range-check
+ * against the building's own position with the same generous budget as placement, then emit
+ * building_removed; the shared reducer frees EVERY footprint cell (not just the anchor), so
+ * the ground reopens for building and the freeing is broadcast to every client.
+ *
+ * No refund here — a deliberate v1 divergence from single-player (which returns half the
+ * wood). The single-player refund is itself a fixed wall-cost approximation regardless of
+ * type, so "parity" and "correct" disagree; rather than bake that quirk in, removal grants
+ * nothing for now. Refund parity is a follow-up.
+ */
+function removeBuilding(
+  ctx: CommandContext,
+  cmd: Extract<WorldCommand, { type: 'remove_building' }>,
+  now: number
+): CommandOutcome {
+  const building = ctx.world.getBuilding(cmd.networkId);
+  if (!building) return { ok: false, reason: 'unknown_entity' };
+  if (!inReach(ctx, building.position, MAX_BUILD_REACH)) return { ok: false, reason: 'out_of_range' };
+
+  const diff: WorldDiff = {
+    type: 'building_removed',
+    networkId: cmd.networkId,
+    byPlayerId: ctx.player.playerId,
+    at: now,
+  };
+  ctx.world.recordDiff(diff);
+  return { ok: true, diff };
 }
 
 function pickupDrop(

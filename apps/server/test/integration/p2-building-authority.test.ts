@@ -20,6 +20,12 @@ describe('building authority', () => {
     cmd: { type: 'place_building' as const, registryType, position, rotation: { x: 0, y: 0, z: 0 }, level: 0 },
   });
 
+  const remove = (seq: number, networkId: number) => ({
+    t: 'command' as const,
+    seq,
+    cmd: { type: 'remove_building' as const, networkId },
+  });
+
   it('rejects an unknown registryType (bug 2a)', async () => {
     ctx = await startTestServer();
     const { c } = await joinClient(ctx.url);
@@ -75,6 +81,48 @@ describe('building authority', () => {
     await c.waitFor('inventory_delta');
     c.send({ t: 'command', seq: seq + 2, cmd: { type: 'place_building', registryType: 'wall', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, level: 1 } });
     expect((await c.waitFor('event')).diff.type).toBe('building_placed'); // different level, no conflict
+    c.close();
+  });
+
+  it('broadcasts a demolition to peers and frees its footprint (the reported bug)', async () => {
+    ctx = await startTestServer();
+    const { c: a } = await joinClient(ctx.url, { displayName: 'A' });
+    const { c: b } = await joinClient(ctx.url, { displayName: 'B' });
+
+    // A gathers enough for two walls (place, demolish, then re-place on the freed cells).
+    const seq = await feedWood(a, BUILDABLES.wall.cost.wood * 2, 800_000);
+
+    a.send(place(seq + 1, 'wall', { x: 0, y: 0, z: 0 }));
+    const placed = await a.waitFor('event');
+    expect(placed.diff.type).toBe('building_placed');
+    const networkId = placed.diff.type === 'building_placed' ? placed.diff.entity.networkId : -1;
+    await a.waitFor('inventory_delta');
+
+    // Drain B's buffered broadcasts (A's harvest drops + the placement) so the next event
+    // B sees is the demolition.
+    await b.collect('event', 100);
+
+    // A demolishes the wall.
+    a.send(remove(seq + 2, networkId));
+    expect((await a.waitFor('event')).diff).toMatchObject({ type: 'building_removed', networkId });
+
+    // The reported bug: a PEER must be told. B receives the same building_removed.
+    expect((await b.waitFor('event')).diff).toMatchObject({ type: 'building_removed', networkId });
+
+    // ...and the server map is clean: the footprint is free again, so A can rebuild there
+    // (an un-freed cell would reject with cell_occupied).
+    a.send(place(seq + 3, 'wall', { x: 0, y: 0, z: 0 }));
+    expect((await a.waitFor('event')).diff.type).toBe('building_placed');
+
+    a.close();
+    b.close();
+  });
+
+  it('rejects demolishing an unknown building (e.g. a double delete-click)', async () => {
+    ctx = await startTestServer();
+    const { c } = await joinClient(ctx.url);
+    c.send(remove(1, 987_654));
+    expect((await c.waitFor('command_rejected')).reason).toBe('unknown_entity');
     c.close();
   });
 });
