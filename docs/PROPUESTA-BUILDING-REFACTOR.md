@@ -47,7 +47,7 @@ la copia inline. El plan se diseña para no repetirlo.
 |---|---|---|---|
 | 0. Red de seguridad | Checklist de smoke + tests de lógica pura (footprint/celdas, recursos). | bajo | ✅ hecha |
 | 1. Reconciliar huérfanos | Borrar `BuildingPreview.ts` y `WallIntersectionHelper.ts`; hacer de `BuildingResourceManager` el único dueño de recursos y borrar los métodos inline. | bajo | ✅ hecha |
-| 2. `BuildEffects` | Partículas + animaciones de colocación/destrucción. Hoja, recibe `scene`+`mesh`. | bajo | pendiente |
+| 2. Efectos/animaciones | Adoptado el módulo `BuildingAnimations` (4º huérfano, ya existía completo) en vez de crear `BuildEffects`: `BuildingSystem` delega colocación/destrucción y partículas, y se borra el código inline + el estado `animatingWalls`/`particleSystems`. | bajo | ✅ hecha (verificar *sensación* de animación en playtest: el módulo difiere del inline en pooling y compleción por Promesa) |
 | 3. `BuildHUD` (DOM) | Menú de selección, texto de construcción, avisos, floating text. Terminar bien lo que intentaba `BuildingUI.ts`. | medio | pendiente |
 | 4. `BuildTracking` (estado) | `builtWalls`+`occupiedCells`+`cellToWallMap`+`builtObjectsByType` con API add/remove/query. Migrar save/restore, `ClientWorld`, `DebugUI`. **Desacopla el resto.** | medio-alto | pendiente |
 | 5. Wire `BuildingPreview` | Re-extraer el preview sobre `BuildTracking`; borrar la copia inline. | medio | pendiente |
@@ -78,6 +78,9 @@ Tras cada fase, en navegador. Single-player salvo donde diga multi.
 
 **Guardado**
 9. Colocar varias piezas (incluida una multi-celda rotada), guardar, recargar: reaparecen en sitio y orientación correctos, y al intentar solapar su huella se rechaza.
+
+**Animaciones (tras adoptar `BuildingAnimations` en Fase 2)**
+12. La colocación rebota (escala + caída) y la destrucción se encoge/desvanece con partículas, igual que antes. Romper varias piezas seguidas no deja partículas colgadas ni bloquea el romper (pooling y set de "animando" del módulo nuevo).
 
 **Multijugador** (dos clientes)
 10. A coloca: B lo ve aparecer. A borra: B lo ve desaparecer y A puede reconstruir en el hueco.
