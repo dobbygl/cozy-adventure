@@ -6,6 +6,7 @@ import { MemoryStore } from './persistence/MemoryStore';
 import { PostgresStore } from './persistence/PostgresStore';
 import type { Store } from './persistence/Store';
 import { SessionManager } from './session/SessionManager';
+import { createAuthProvider } from './auth/createAuthProvider';
 import { GameServer } from './server';
 
 function createStore(databaseUrl: string | null): Store {
@@ -23,7 +24,8 @@ async function main(): Promise<void> {
   const store = createStore(config.databaseUrl);
   const transport = new WebSocketTransport(config, metrics, logger);
   const sessions = new SessionManager();
-  const server = new GameServer({ config, transport, store, metrics, logger, sessions });
+  const auth = createAuthProvider(config);
+  const server = new GameServer({ config, transport, store, metrics, logger, sessions, auth });
 
   await server.start();
 
