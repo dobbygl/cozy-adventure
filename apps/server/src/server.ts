@@ -276,10 +276,15 @@ export class GameServer {
 
     if (outcome.ok) {
       // Apply-on-confirm (v1): broadcast the authoritative event to everyone,
-      // including the emitter.
+      // including the emitter. A command may produce follow-on diffs (e.g. harvesting
+      // spawns the ground drops it yields); broadcast them in order, right after.
       this.broadcast({ t: 'event', diff: outcome.diff });
-      // Tell the actor about any server-authoritative inventory change (chop grants a
-      // resource, pickup grants the drop, drop removes it) so its client reflects it.
+      if (outcome.extraDiffs) {
+        for (const diff of outcome.extraDiffs) this.broadcast({ t: 'event', diff });
+      }
+      // Tell the actor about any server-authoritative inventory change (pickup grants the
+      // drop, drop removes it) so its client reflects it. Harvesting no longer grants here:
+      // its yield lands on the ground as drops and is gained on pickup.
       if (outcome.inventoryDelta) {
         session.send({ t: 'inventory_delta', ...outcome.inventoryDelta });
         this.metrics.incMessagesOut();

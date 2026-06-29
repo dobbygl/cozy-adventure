@@ -23,6 +23,8 @@ const worldCommand = z.discriminatedUnion('type', [
     type: z.literal('harvest_node'),
     networkId: z.number().int(),
     nodeKind: z.enum(RESOURCE_NODE_KINDS),
+    // The node's world position: the server spawns the harvested drops here.
+    position: vec3,
   }),
   z.object({ type: z.literal('pickup_drop'), networkId: z.number().int() }),
   z.object({

@@ -20,8 +20,11 @@ import type { ResourceNodeKind } from './resourceNodes';
  * v3: identity token (join carries an opaque reconnect token, joined returns it;
  * a playerId may only be claimed with its token), and place_building no longer
  * carries `cell` — the server derives the footprint cells from position+rotation.
+ * v4: harvest_node carries the node's `position` so the server can spawn the
+ * harvested items as ground drops (parity with single-player) instead of granting
+ * them straight to the inventory; the apple_tree node kind drops apples too.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /**
  * Wire-contract id-space split. Base world entities (the seeded trees) are
@@ -47,7 +50,15 @@ export type WorldCommand =
       rotation: Vec3;
       level: number;
     }
-  | { type: 'harvest_node'; networkId: number; nodeKind: ResourceNodeKind }
+  | {
+      // `position` is the node's world position: the server has no tree positions of
+      // its own (it tracks only diffs), so the client supplies it and the server spawns
+      // the harvested wood/apples as ground drops there.
+      type: 'harvest_node';
+      networkId: number;
+      nodeKind: ResourceNodeKind;
+      position: Vec3;
+    }
   | { type: 'pickup_drop'; networkId: number }
   | { type: 'drop_item'; itemId: string; quantity: number; position: Vec3 };
 

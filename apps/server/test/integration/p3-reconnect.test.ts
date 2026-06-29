@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { PROTOCOL_VERSION, RESOURCE_NODES, totalYieldFor } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
+import { fellAndGatherWood } from '../harness/feedWood';
 import { MockClient } from '../harness/MockClient';
 import { countItem } from '../../src/world/inventory';
 
@@ -41,14 +42,8 @@ describe('P3 keepalive, timeout and reconnect', () => {
     ctx = await startTestServer({ RECONNECT_WINDOW_MS: '3000' });
     const { c: a, joined: ja } = await joinClient(ctx.url);
     const playerId = ja.playerId;
-    // Fell a tree over its full health, summing the per-hit wood grants.
-    const hits = RESOURCE_NODES.tree.maxHealth;
-    let woodGained = 0;
-    for (let i = 0; i < hits; i++) {
-      a.send({ t: 'command', seq: i + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
-      await a.waitFor('event');
-      woodGained += (await a.waitFor('inventory_delta')).delta;
-    }
+    // Fell a tree and pick up the wood it dropped on the ground (parity with single-player).
+    const { wood: woodGained } = await fellAndGatherWood(a, 5);
     expect(woodGained).toBe(totalYieldFor(RESOURCE_NODES.tree)); // 13, same as single-player
     a.close();
     await sleep(120); // within the reconnect window

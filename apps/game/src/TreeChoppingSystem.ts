@@ -27,11 +27,12 @@ export class TreeChoppingSystem {
   hoveredTree: THREE.Object3D | null;
   /**
    * In multiplayer, Game sets this to send a harvest_node command (one per axe swing).
-   * When present, harvesting is server-authoritative: emit the hit and let the confirmed
-   * node_damaged/node_depleted events drive the tree's reaction and removal, instead of
-   * running the local health/destroy path. Null = local (single-player) mode.
+   * When present, harvesting is server-authoritative: emit the hit (with the node's kind
+   * and world position) and let the confirmed node_damaged/node_depleted events drive the
+   * tree's reaction and removal, while the server spawns the yielded wood/apples as ground
+   * drops at that position. Null = local (single-player) mode.
    */
-  requestHarvest: ((networkId: number, kind: ResourceNodeKind) => void) | null = null;
+  requestHarvest: ((networkId: number, kind: ResourceNodeKind, position: THREE.Vector3) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -255,14 +256,16 @@ export class TreeChoppingSystem {
     // Multiplayer: harvesting is server-authoritative and multi-hit. Emit ONE
     // harvest_node command per swing and return; the server tracks the tree's health
     // and the confirmed node_damaged/node_depleted events drive its reaction (shake +
-    // darkening) and removal, so every client — including remotes — sees the same
-    // thing. We do NOT touch local health or mark the tree destroyed here: it stays
-    // choppable until the server confirms depletion. The player's axe-swing animation
-    // already fired in handleClick, so the swing still feels immediate.
+    // darkening) and removal, while it spawns the yielded wood (and apples, for an apple
+    // tree) as ground drops at the tree — so every client sees the same thing. We do NOT
+    // touch local health, drop items, or mark the tree destroyed here: it stays choppable
+    // until the server confirms depletion. The player's axe-swing animation already fired
+    // in handleClick, so the swing still feels immediate.
     if (this.requestHarvest) {
       const networkId = treeMesh.userData?.networkId;
       if (typeof networkId === 'number') {
-        this.requestHarvest(networkId, 'tree');
+        const kind: ResourceNodeKind = this.isAppleTree(treeMesh) ? 'apple_tree' : 'tree';
+        this.requestHarvest(networkId, kind, treeMesh.position);
         return;
       }
     }

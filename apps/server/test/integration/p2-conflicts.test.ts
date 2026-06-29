@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { RESOURCE_NODES } from '@cozy/shared';
+import { RESOURCE_NODES, type WorldDiff } from '@cozy/shared';
 import { startTestServer, type TestServer } from '../harness/startTestServer';
 import { joinClient } from '../harness/joinClient';
 import { feedWood } from '../harness/feedWood';
@@ -18,18 +18,31 @@ describe('P2 conflict resolution (single winner)', () => {
     const hits = RESOURCE_NODES.tree.maxHealth; // 5 hits to fell a tree
 
     for (let i = 0; i < hits; i++) {
-      c.send({ t: 'command', seq: i + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
-      const ev = await c.waitFor('event');
-      // The last hit depletes the tree; every earlier hit only damages it.
-      const expected = i === hits - 1 ? 'node_depleted' : 'node_damaged';
-      expect(ev.diff.type).toBe(expected);
-      if (ev.diff.type === 'node_depleted' || ev.diff.type === 'node_damaged') {
-        expect(ev.diff.networkId).toBe(5);
-      }
+      c.send({
+        t: 'command',
+        seq: i + 1,
+        cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree', position: { x: 0, y: 0, z: 0 } },
+      });
     }
+    // Each hit broadcasts a node diff plus the ground-drop diffs it spawns; keep only the
+    // node diffs and check the progression: damaged for every hit but the last, which fells it.
+    const nodeEvents = (await c.collect('event', 250))
+      .map((e) => e.diff)
+      .filter(
+        (d): d is Extract<WorldDiff, { type: 'node_damaged' | 'node_depleted' }> =>
+          d.type === 'node_damaged' || d.type === 'node_depleted'
+      );
+    expect(nodeEvents).toHaveLength(hits);
+    expect(nodeEvents.every((d) => d.networkId === 5)).toBe(true);
+    expect(nodeEvents.slice(0, hits - 1).every((d) => d.type === 'node_damaged')).toBe(true);
+    expect(nodeEvents[hits - 1].type).toBe('node_depleted');
 
     // Already depleted: a further harvest is rejected (no double-fell).
-    c.send({ t: 'command', seq: hits + 1, cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree' } });
+    c.send({
+      t: 'command',
+      seq: hits + 1,
+      cmd: { type: 'harvest_node', networkId: 5, nodeKind: 'tree', position: { x: 0, y: 0, z: 0 } },
+    });
     const rej = await c.waitFor('command_rejected');
     expect(rej.reason).toBe('already_consumed');
     c.close();
@@ -76,15 +89,17 @@ describe('P2 conflict resolution (single winner)', () => {
     const { c: b } = await joinClient(ctx.url);
     await a.waitFor('peer_joined');
 
-    // a harvests a tree once (gains wood), then drops it on the ground.
-    a.send({ t: 'command', seq: 1, cmd: { type: 'harvest_node', networkId: 7, nodeKind: 'tree' } });
-    await a.waitFor('event');
-    a.send({ t: 'command', seq: 2, cmd: { type: 'drop_item', itemId: 'wood', quantity: 1, position: { x: 0, y: 0, z: 0 } } });
-    const spawn = await a.waitFor('event');
-    expect(spawn.diff.type).toBe('drop_spawned');
-    const networkId = spawn.diff.type === 'drop_spawned' ? spawn.diff.entity.networkId : -1;
+    // a harvests a tree once: its wood lands on the ground as a drop both can contend for.
+    a.send({
+      t: 'command',
+      seq: 1,
+      cmd: { type: 'harvest_node', networkId: 7, nodeKind: 'tree', position: { x: 0, y: 0, z: 0 } },
+    });
+    const spawn = (await a.collect('event', 200)).find((e) => e.diff.type === 'drop_spawned');
+    expect(spawn).toBeDefined();
+    const networkId = spawn && spawn.diff.type === 'drop_spawned' ? spawn.diff.entity.networkId : -1;
 
-    a.send({ t: 'command', seq: 3, cmd: { type: 'pickup_drop', networkId } });
+    a.send({ t: 'command', seq: 2, cmd: { type: 'pickup_drop', networkId } });
     b.send({ t: 'command', seq: 1, cmd: { type: 'pickup_drop', networkId } });
 
     const removed = (await a.collect('event', 300)).filter(
