@@ -5,6 +5,7 @@ import { BuildingSaveManager } from './BuildingSaveManager.js';
 import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
 import { BuildingAnimations } from './BuildingAnimations.js';
 import { BuildHUD } from './BuildHUD.js';
+import { BuildPreview } from './BuildPreview.js';
 import { BuildTracking } from './BuildTracking.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory } from './inventory.js';
@@ -37,6 +38,7 @@ export class BuildingSystem {
   previewMesh: THREE.Object3D | null;
   wallMesh: THREE.Object3D | null;
   tracking: BuildTracking;
+  preview: BuildPreview;
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
   buildingMode: string;
@@ -132,6 +134,8 @@ export class BuildingSystem {
     this.animations = new BuildingAnimations(this.scene);
     // DOM/HUD: build menu, mode banner, floating text (delegated to BuildHUD).
     this.hud = new BuildHUD(this);
+    // Build-mode preview ghost (placement/break highlight), delegated to BuildPreview.
+    this.preview = new BuildPreview(this);
 
     // Player reference for grid following
     this.player = null;
@@ -465,139 +469,13 @@ async init() {
     }
     return false;
   }
+
+  // Build-mode preview ghost lives in BuildPreview; thin forwarder keeps the call sites
+  // (gameLoop, input adapters, mode/selection changes) working unchanged.
   updatePreview() {
-    if (!this.isBuilding || !this.wallMesh) return;
-    
-    // Always ensure preview matches the currently selected object
-    this.ensureFreshPreview();
-    
-    // this.updateGridPosition(); // REMOVED - No longer needed as LevelManager handles grid.
-    
-    // Check if cursor is over UI - hide preview if it is
-    const mouseEvent = { clientX: ((this.mouse.x + 1) / 2) * window.innerWidth, clientY: ((-this.mouse.y + 1) / 2) * window.innerHeight };
-    if (this.isCursorOverUI(mouseEvent)) {
-      if (this.previewMesh) {
-        this.previewMesh.visible = false;
-      }
-      return;
-    }
-    
-    // Raycast to find intersection
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-    
-    if (this.buildingMode === 'build') {
-      // Raycast to current level plane for build position
-      const currentLevelY = this.getCurrentLevelY();
-      const levelPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -currentLevelY);
-      const intersectPoint = new THREE.Vector3();
-      let gridPos;
-      
-      if (this.raycaster.ray.intersectPlane(levelPlane, intersectPoint)) {
-        gridPos = this.snapToGrid(intersectPoint, currentLevelY);
-      }
-      
-      if (gridPos) {
-        
-        // Create or update preview
-        if (!this.previewMesh) {
-          this.createPreview();
-        }
-        
-        // Update preview position and rotation with proper matrix updates
-        this.previewMesh!.position.copy(gridPos);
-        this.previewMesh!.rotation.y = this.currentRotation;
-        this.previewMesh!.updateMatrixWorld(true); // Force matrix update
-        this.previewMesh!.visible = true;
-        
-        // Enhanced collision detection for preview - check only current level
-        const occupiedCells = this.getOccupiedCells(gridPos, this.currentRotation);
-        const cellConflicts = occupiedCells.filter(cellKey => 
-          this.levelManager.isCellOccupiedOnCurrentLevel(cellKey)
-        );
-        const hasCellConflicts = cellConflicts.length > 0;
-        
-        // Check physical mesh intersection
-        const hasPhysicalConflicts = this.checkPhysicalIntersection(gridPos, this.currentRotation);
-        const overlapsPlayer = this.checkPlayerFootprintIntersection(gridPos, this.currentRotation);
-        
-        const isInvalid = hasCellConflicts || hasPhysicalConflicts || overlapsPlayer;
-        
-        // Debug logging for placement validation (reduced frequency)
-        if (Math.random() < 0.1) { // Log only 10% of the time to reduce spam
-          if (isInvalid) {
-            console.log(`❌ Cannot place wall - conflicts detected:`);
-            console.log(`  Position: (${gridPos.x}, ${gridPos.z}), Rotation: ${(this.currentRotation * 180 / Math.PI).toFixed(0)}°`);
-            if (hasCellConflicts) console.log(`  Cell conflicts:`, cellConflicts);
-            if (hasPhysicalConflicts) console.log(`  Physical mesh intersection detected`);
-            if (overlapsPlayer) console.log(`  Player footprint intersection detected`);
-          }
-        }
-        
-        // Check if player has enough resources
-        const hasEnoughResources = this.resourceManager.hasRequiredResources(this.selectedBuildObject);
-        
-        // Show/hide resource warning based on availability (only in build mode)
-        if (!hasEnoughResources) {
-          this.resourceManager.showResourceWarning(this.mouse, this.camera as any);
-        } else {
-          this.resourceManager.hideResourceWarning();
-        }
-        
-        // Change preview color based on validity AND resource availability
-        this.previewMesh!.traverse((child: any) => {
-          if (child.isMesh && child.material) {
-            if (isInvalid || !hasEnoughResources) {
-              child.material.color.setHex(0xff4444); // Red for invalid build or insufficient resources
-              child.material.opacity = 0.5;
-            } else {
-              child.material.color.setHex(0x44ff44); // Green for all valid placements
-              child.material.opacity = 0.7;
-            }
-          }
-        });
-      }
-    } else if (this.buildingMode === 'delete') {
-      // Hide resource warning in delete mode since it's not relevant
-      this.resourceManager.hideResourceWarning();
-      
-      // Delete mode: raycast against built walls specifically
-      const intersects = this.raycaster.intersectObjects(this.builtWalls, true);
-      
-      if (intersects.length > 0) {
-        const targetObject = this.findBreakableParent(intersects[0].object);
-        
-        if (targetObject && !this.animations.isAnimating(targetObject)) {
-          // Only show preview for walls that are NOT currently animating
-          // Create preview that matches the targeted object
-          this.createDeletePreview(targetObject);
-          
-          // Position preview at target object with proper matrix update
-          this.previewMesh!.position.copy(targetObject.position);
-          this.previewMesh!.rotation.copy(targetObject.rotation);
-          this.previewMesh!.updateMatrixWorld(true); // Force matrix update
-          this.previewMesh!.visible = true;
-          
-          // Orange color for valid break target
-          this.previewMesh!.traverse((child: any) => {
-            if (child.isMesh && child.material) {
-              child.material.color.setHex(0xff8844); // Orange for valid break
-              child.material.opacity = 0.8;
-            }
-          });
-        } else {
-          // No valid target or target is animating - hide preview
-          if (this.previewMesh) {
-            this.previewMesh.visible = false;
-          }
-        }
-      } else {
-        // No valid target - hide preview
-        if (this.previewMesh) {
-          this.previewMesh.visible = false;
-        }
-      }
-    }
+    this.preview.updatePreview();
   }
+
   findBreakableParent(object: THREE.Object3D) {
     // For built walls, find the wall object in our builtWalls array
     let current: THREE.Object3D | null = object;
@@ -611,120 +489,6 @@ async init() {
     return null;
   }
   
-  createPreview() {
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-    if (!currentBuildObject || !currentBuildObject.mesh) return;
-    
-    // Clone the selected object mesh for preview
-    this.previewMesh = currentBuildObject.mesh.clone();
-    
-    this.setupPreviewMaterial(this.previewMesh);
-    this.scene.add(this.previewMesh);
-  }
-  
-  createDeletePreview(targetObject: THREE.Object3D) {
-    // Remove existing preview if it exists
-    if (this.previewMesh) {
-      this.scene.remove(this.previewMesh);
-      this.previewMesh = null;
-    }
-    
-    // Clone the targeted object for preview instead of the selected build object
-    this.previewMesh = targetObject.clone();
-    
-    this.setupPreviewMaterial(this.previewMesh);
-    this.scene.add(this.previewMesh);
-  }
-  
-  setupPreviewMaterial(mesh: THREE.Object3D) {
-    // Make preview materials transparent and ensure they're independent
-    mesh.traverse((child: any) => {
-      if (child.isMesh) {
-        // Deep clone material to ensure complete independence
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material = child.material.map((mat: any) => mat.clone());
-          } else {
-            child.material = child.material.clone();
-          }
-          
-          // Set preview-specific properties
-          if (Array.isArray(child.material)) {
-            child.material.forEach((mat: any) => {
-              mat.transparent = true;
-              mat.opacity = 0.7;
-              mat.color.setHex(0x44ff44); // Green by default
-            });
-          } else {
-            child.material.transparent = true;
-            child.material.opacity = 0.7;
-            child.material.color.setHex(0x44ff44); // Green for all objects
-          }
-        }
-        
-        // Disable shadows for preview
-        child.castShadow = false;
-        child.receiveShadow = false;
-      }
-    });
-  }
-  
-  ensureFreshPreview() {
-    const currentBuildObject = this.buildableObjects[this.selectedBuildObject];
-    if (!currentBuildObject || !currentBuildObject.mesh) return;
-    
-    // Check if preview exists and matches the selected object
-    let needsRefresh = false;
-    
-    if (!this.previewMesh) {
-      needsRefresh = true;
-    } else {
-      // Check if preview mesh is for the current selected object
-      // We can identify this by checking if the geometry/structure matches
-      const previewChildCount = this.previewMesh.children.length;
-      const selectedChildCount = currentBuildObject.mesh.children.length;
-      
-      if (previewChildCount !== selectedChildCount) {
-        needsRefresh = true;
-      }
-    }
-    
-    if (needsRefresh) {
-      // Remove existing preview
-      if (this.previewMesh) {
-        this.scene.remove(this.previewMesh);
-        this.previewMesh = null;
-      }
-      
-      // Create fresh preview for selected object
-      this.createPreview();
-    }
-  }
-  
-  snapToGrid(worldPosition: THREE.Vector3, targetY: number | null = null) {
-    // Use current level Y if no target specified
-    if (targetY === null) {
-      targetY = this.getCurrentLevelY();
-    }
-    // Snap position to grid with proper rounding to prevent floating point errors
-    const snappedX = Math.round(worldPosition.x / this.gridSize) * this.gridSize;
-    const snappedZ = Math.round(worldPosition.z / this.gridSize) * this.gridSize;
-    
-    // Ensure snapped values are exactly on grid boundaries
-    const gridX = Math.round(snappedX / this.gridSize) * this.gridSize;
-    const gridZ = Math.round(snappedZ / this.gridSize) * this.gridSize;
-    
-    return new THREE.Vector3(gridX, targetY, gridZ);
-  }
-  
-  getCellKey(position: THREE.Vector3) {
-    // Delegate the grid rounding to the shared helper so the client and the
-    // server (which derives cells from position) agree on the anchor cell.
-    const gridX = buildingGridCoord(position.x, this.gridSize);
-    const gridZ = buildingGridCoord(position.z, this.gridSize);
-    return `${gridX},${gridZ}`;
-  }
-
   getOccupiedCells(position: THREE.Vector3, rotation: number): string[] {
     // The footprint math lives in @cozy/shared so this preview matches exactly what
     // the server validates and reserves (no client/server drift on conflicts). We feed
