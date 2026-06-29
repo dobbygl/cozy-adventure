@@ -3,8 +3,9 @@ import { BuildingResourceManager } from './BuildingResourceManager.js';
 import { BuildableObjectsRegistry } from './BuildableObjectsRegistry.js';
 import { BuildingSaveManager } from './BuildingSaveManager.js';
 import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
+import { BuildingAnimations } from './BuildingAnimations.js';
 import { LevelManager } from './LevelManager.js';
-import type { Inventory, Item } from './inventory.js';
+import type { Inventory } from './inventory.js';
 import type { CollisionSystem } from './CollisionSystem.js';
 import type { BuildableObject } from './BuildableObjectsRegistry.js';
 import type { Vec3, BuildingState } from '@cozy/shared';
@@ -43,8 +44,7 @@ export class BuildingSystem {
   currentRotationIndex: number;
   debugIndicators: Map<string, any>;
   showDebugIndicators: boolean;
-  animatingWalls: Set<THREE.Object3D>;
-  particleSystems: Map<any, any>;
+  animations: BuildingAnimations;
   player: any;
   // Assigned during init()/updateLevelReferences() or in event handlers, not the constructor.
   occupiedCells!: Set<string>;
@@ -125,10 +125,10 @@ export class BuildingSystem {
     this.debugIndicators = new Map(); // Maps cell keys to visual indicators
     this.showDebugIndicators = false;
     
-    // Animation system
-    this.animatingWalls = new Set(); // Track walls currently animating
-    this.particleSystems = new Map(); // Maps walls to their particle systems
-    
+    // Animation system: placement/destruction tweens + particle effects, owning the
+    // "currently animating" set and the live particle systems.
+    this.animations = new BuildingAnimations(this.scene);
+
     // Player reference for grid following
     this.player = null;
     
@@ -547,7 +547,7 @@ updateLevelReferences() {
       if (intersects.length > 0) {
         const targetObject = this.findBreakableParent(intersects[0].object);
         
-        if (targetObject && !this.animatingWalls.has(targetObject)) {
+        if (targetObject && !this.animations.isAnimating(targetObject)) {
           // Only show preview for walls that are NOT currently animating
           // Create preview that matches the targeted object
           this.createDeletePreview(targetObject);
@@ -863,7 +863,7 @@ updateLevelReferences() {
     console.log(`Total cell mappings: ${this.cellToWallMap.size}`);
     
     // Start placement animation
-    this.playPlacementAnimation(newWall);
+    this.animations.playPlacementAnimation(newWall);
     
     console.log(`Built wall at ${buildPosition.x}, ${buildPosition.z} with rotation ${this.currentRotation.toFixed(2)}`);
     console.log('Wall userData:', newWall.userData);
@@ -1254,7 +1254,7 @@ updateLevelReferences() {
       
       if (targetObject) {
         // CRITICAL: Check if this wall is already animating - prevent breaking it again
-        if (this.animatingWalls.has(targetObject)) {
+        if (this.animations.isAnimating(targetObject)) {
           console.log('⚠️ Wall is already being broken - ignoring additional break attempts');
           return;
         }
@@ -1278,7 +1278,7 @@ updateLevelReferences() {
     if (!objectToBreak || !objectToBreak.userData.isBreakable) return;
 
     // CRITICAL: Double-check that wall is not already animating
-    if (this.animatingWalls.has(objectToBreak)) {
+    if (this.animations.isAnimating(objectToBreak)) {
       console.log('⚠️ Object is already being broken - preventing duplicate break');
       return;
     }
@@ -1315,75 +1315,9 @@ updateLevelReferences() {
       this.showFloatingText('No Resources Returned', objectToBreak.position, '#888');
     }
 
-    // Start break animation instead of immediate removal
-    this.playBreakAnimation(objectToBreak);
-  }
-  
-  playBreakAnimation(wall: THREE.Object3D) {
-    console.log('🗑️ Starting break animation for wall at:', wall.position);
-    
-    // Mark wall as animating to prevent interaction
-    this.animatingWalls.add(wall);
-    
-    // Store original properties
-    const originalScale = wall.scale.clone();
-    const originalPosition = wall.position.clone();
-    const originalRotation = wall.rotation.clone();
-    
-    // Clone materials to avoid affecting template or future walls
-    wall.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        child.material = child.material.clone();
-      }
-    });
-    
-    // Create destruction particle effects
-    this.createDestructionParticles(wall, originalPosition);
-    
-    // Animate wall breaking
-    const animationDuration = 600; // 0.6 seconds
-    const startTime = Date.now();
-    
-    const animateBreak = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / animationDuration, 1);
-      
-      // Easing function (ease-in-out)
-      const easeInOut = (t: number) => {
-        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      };
-      
-      const easedProgress = easeInOut(progress);
-      
-      // Scale down to nothing
-      const currentScale = originalScale.x * (1 - easedProgress);
-      wall.scale.setScalar(Math.max(0.01, currentScale));
-      
-      // Keep original rotation, only add slight wobble
-      wall.rotation.x = originalRotation.x + Math.sin(progress * Math.PI * 2) * 0.05;
-      wall.rotation.y = originalRotation.y; // Keep Y rotation unchanged
-      wall.rotation.z = originalRotation.z + Math.cos(progress * Math.PI * 2) * 0.05;
-      
-      // Fade out material
-      wall.traverse((child: any) => {
-        if (child.isMesh && child.material) {
-          if (!child.material.transparent) {
-            child.material.transparent = true;
-          }
-          child.material.opacity = 1 - easedProgress;
-        }
-      });
-      
-      // Continue animation if not complete
-      if (progress < 1) {
-        requestAnimationFrame(animateBreak);
-      } else {
-        // Animation complete - now actually remove the wall
-        this.completeWallBreak(wall);
-      }
-    };
-    
-    animateBreak();
+    // Play the break animation; its confirmed completion runs the authoritative teardown
+    // (free cells, untrack, remove from scene) via completeWallBreak.
+    this.animations.playDestructionAnimation(objectToBreak)?.then(() => this.completeWallBreak(objectToBreak));
   }
   
   completeWallBreak(objectToBreak: THREE.Object3D) {
@@ -1452,22 +1386,15 @@ updateLevelReferences() {
       console.log('  Remaining cell mappings:', this.cellToWallMap.size);
     }
     
-    // Remove from animating walls
-    this.animatingWalls.delete(objectToBreak);
-    
-    // Remove object from scene
+    // Remove object from scene (the animating flag and particle cleanup are owned by
+    // BuildingAnimations, which cleared/scheduled them when the destruction tween finished).
     this.scene.remove(objectToBreak);
-    
+
     // Remove from collision system
     if (this.collisionSystem) {
       this.collisionSystem.removeCollider(objectToBreak);
     }
-    
-    // Clean up particle system after a delay
-    setTimeout(() => {
-      this.cleanupParticleSystem(objectToBreak);
-    }, 2000);
-    
+
     // Force preview update to ensure proper rotation state
     if (this.isBuilding && this.previewMesh) {
       // Reset preview rotation to current rotation state
@@ -1740,6 +1667,9 @@ updateLevelReferences() {
     this.objectsRegistry.clearBuiltObjects();
     this.occupiedCells.clear();
     this.cellToWallMap.clear();
+
+    // Tear down animations + particle systems (clears the pool and any live particles)
+    this.animations.destroy();
     
     // Clean up preview
     if (this.previewMesh) {
@@ -1851,308 +1781,6 @@ updateLevelReferences() {
     }
 
     return this.getOccupiedCells(position, rotation).some((cellKey) => blockedPlayerCells.has(cellKey));
-  }
-  
-  playPlacementAnimation(wall: THREE.Object3D) {
-    // Mark wall as animating
-    this.animatingWalls.add(wall);
-    
-    // Store original properties
-    const originalScale = wall.scale.clone();
-    const originalPosition = wall.position.clone();
-    const originalRotation = wall.rotation.clone();
-    
-    // Clone materials to avoid affecting template or future walls
-    wall.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        child.material = child.material.clone();
-      }
-    });
-    
-    // Start with wall slightly smaller and higher
-    wall.scale.setScalar(0.1);
-    wall.position.y = originalPosition.y + 2.0;
-    
-    // Create wood chip particle system
-    this.createWoodChipParticles(wall, originalPosition);
-    
-    // Animate wall scaling and dropping down
-    const animationDuration = 800; // 0.8 seconds
-    const startTime = Date.now();
-    
-    const animateWall = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / animationDuration, 1);
-      
-      // Easing function (ease-out bounce)
-      const easeOutBounce = (t: number) => {
-        if (t < 1 / 2.75) {
-          return 7.5625 * t * t;
-        } else if (t < 2 / 2.75) {
-          t -= 1.5 / 2.75;
-          return 7.5625 * t * t + 0.75;
-        } else if (t < 2.5 / 2.75) {
-          t -= 2.25 / 2.75;
-          return 7.5625 * t * t + 0.9375;
-        } else {
-          t -= 2.625 / 2.75;
-          return 7.5625 * t * t + 0.984375;
-        }
-      };
-      
-      const easedProgress = easeOutBounce(progress);
-      
-      // Animate scale
-      const currentScale = 0.1 + (originalScale.x - 0.1) * easedProgress;
-      wall.scale.setScalar(currentScale);
-      
-      // Animate position (drop down) - keep X and Z unchanged
-      wall.position.x = originalPosition.x;
-      wall.position.y = originalPosition.y + 2.0 * (1 - easedProgress);
-      wall.position.z = originalPosition.z;
-      
-      // Keep rotation unchanged during animation
-      wall.rotation.copy(originalRotation);
-      
-      // Continue animation if not complete
-      if (progress < 1) {
-        requestAnimationFrame(animateWall);
-      } else {
-        // Animation complete - restore exact original values
-        wall.scale.copy(originalScale);
-        wall.position.copy(originalPosition);
-        wall.rotation.copy(originalRotation);
-        this.animatingWalls.delete(wall);
-        
-        // Clean up particle system after a delay
-        setTimeout(() => {
-          this.cleanupParticleSystem(wall);
-        }, 2000);
-      }
-    };
-    
-    animateWall();
-  }
-  
-  createWoodChipParticles(wall: THREE.Object3D, position: THREE.Vector3) {
-    const particleCount = 15;
-    const particles = [];
-    
-    // Create individual wood chip particles
-    for (let i = 0; i < particleCount; i++) {
-      const chip = this.createWoodChip();
-      
-      // Position around the wall
-      const angle = (i / particleCount) * Math.PI * 2;
-      const radius = 0.8 + Math.random() * 0.4;
-      
-      chip.position.set(
-        position.x + Math.cos(angle) * radius,
-        position.y + 0.5 + Math.random() * 0.5,
-        position.z + Math.sin(angle) * radius
-      );
-      
-      // Random rotation
-      chip.rotation.set(
-        Math.random() * Math.PI * 2,
-        Math.random() * Math.PI * 2,
-        Math.random() * Math.PI * 2
-      );
-      
-      // Store animation data
-      chip.userData.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 3,
-        Math.random() * 2 + 1,
-        (Math.random() - 0.5) * 3
-      );
-      chip.userData.angularVelocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 8,
-        (Math.random() - 0.5) * 8,
-        (Math.random() - 0.5) * 8
-      );
-      chip.userData.startTime = Date.now();
-      chip.userData.lifetime = 1500 + Math.random() * 1000; // 1.5-2.5 seconds
-      
-      this.scene.add(chip);
-      particles.push(chip);
-    }
-    
-    // Store particle system reference
-    this.particleSystems.set(wall, particles);
-    
-    // Animate particles
-    this.animateParticles(particles);
-  }
-  
-  createDestructionParticles(wall: THREE.Object3D, position: THREE.Vector3) {
-    const particleCount = 25; // More particles for destruction
-    const particles = [];
-    
-    // Create destruction debris particles
-    for (let i = 0; i < particleCount; i++) {
-      const debris = this.createDebris();
-      
-      // Position around the wall with more spread
-      const angle = (i / particleCount) * Math.PI * 2;
-      const radius = 0.5 + Math.random() * 0.8;
-      
-      debris.position.set(
-        position.x + Math.cos(angle) * radius,
-        position.y + 0.3 + Math.random() * 0.8,
-        position.z + Math.sin(angle) * radius
-      );
-      
-      // Random rotation
-      debris.rotation.set(
-        Math.random() * Math.PI * 2,
-        Math.random() * Math.PI * 2,
-        Math.random() * Math.PI * 2
-      );
-      
-      // Store animation data with more explosive velocity
-      debris.userData.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 6, // Higher horizontal velocity
-        Math.random() * 3 + 2, // Higher upward velocity
-        (Math.random() - 0.5) * 6
-      );
-      debris.userData.angularVelocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 12,
-        (Math.random() - 0.5) * 12,
-        (Math.random() - 0.5) * 12
-      );
-      debris.userData.startTime = Date.now();
-      debris.userData.lifetime = 2000 + Math.random() * 1500; // 2-3.5 seconds
-      
-      this.scene.add(debris);
-      particles.push(debris);
-    }
-    
-    // Store particle system reference
-    this.particleSystems.set(wall, particles);
-    
-    // Animate particles
-    this.animateParticles(particles);
-  }
-  
-  createWoodChip() {
-    // Create a small rectangular wood chip
-    const width = 0.08 + Math.random() * 0.04;
-    const height = 0.02 + Math.random() * 0.02;
-    const depth = 0.12 + Math.random() * 0.06;
-    
-    const geometry = new THREE.BoxGeometry(width, height, depth);
-    const material = new THREE.MeshLambertMaterial({
-      color: new THREE.Color().setHSL(0.08 + Math.random() * 0.05, 0.6, 0.4 + Math.random() * 0.2)
-    });
-    
-    const chip = new THREE.Mesh(geometry, material);
-    chip.castShadow = true;
-    
-    return chip;
-  }
-  
-  createDebris() {
-    // Create destruction debris - more varied shapes and sizes
-    const debrisType = Math.random();
-    let geometry, material;
-    
-    if (debrisType < 0.4) {
-      // Rectangular chunks
-      const width = 0.06 + Math.random() * 0.08;
-      const height = 0.03 + Math.random() * 0.04;
-      const depth = 0.08 + Math.random() * 0.10;
-      geometry = new THREE.BoxGeometry(width, height, depth);
-    } else if (debrisType < 0.7) {
-      // Irregular chunks (scaled spheres)
-      const radius = 0.04 + Math.random() * 0.06;
-      geometry = new THREE.SphereGeometry(radius, 6, 4);
-      geometry.scale(1 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 1 + Math.random() * 0.5);
-    } else {
-      // Thin splinters
-      const width = 0.02 + Math.random() * 0.02;
-      const height = 0.01 + Math.random() * 0.01;
-      const depth = 0.15 + Math.random() * 0.10;
-      geometry = new THREE.BoxGeometry(width, height, depth);
-    }
-    
-    // Darker, more varied colors for destruction debris
-    material = new THREE.MeshLambertMaterial({
-      color: new THREE.Color().setHSL(
-        0.05 + Math.random() * 0.08, // Brown hues
-        0.4 + Math.random() * 0.4,   // Varied saturation
-        0.2 + Math.random() * 0.3    // Darker values
-      )
-    });
-    
-    const debris = new THREE.Mesh(geometry, material);
-    debris.castShadow = true;
-    
-    return debris;
-  }
-  
-  animateParticles(particles: any) {
-    const animateFrame = () => {
-      const currentTime = Date.now();
-      let activeParticles = 0;
-      
-      particles.forEach((particle: any) => {
-        const elapsed = currentTime - particle.userData.startTime;
-        const progress = elapsed / particle.userData.lifetime;
-        
-        if (progress < 1) {
-          activeParticles++;
-          
-          // Apply physics
-          const deltaTime = 0.016; // Assuming 60fps
-          
-          // Apply gravity
-          particle.userData.velocity.y -= 9.8 * deltaTime;
-          
-          // Update position
-          particle.position.add(
-            particle.userData.velocity.clone().multiplyScalar(deltaTime)
-          );
-          
-          // Update rotation
-          particle.rotation.x += particle.userData.angularVelocity.x * deltaTime;
-          particle.rotation.y += particle.userData.angularVelocity.y * deltaTime;
-          particle.rotation.z += particle.userData.angularVelocity.z * deltaTime;
-          
-          // Fade out towards end of lifetime
-          const fadeProgress = Math.max(0, (progress - 0.7) / 0.3);
-          particle.material.opacity = 1 - fadeProgress;
-          particle.material.transparent = fadeProgress > 0;
-          
-          // Stop bouncing when hitting ground level
-          if (particle.position.y <= 6.05) {
-            particle.position.y = 6.05;
-            particle.userData.velocity.y *= -0.3; // Small bounce
-            particle.userData.velocity.x *= 0.8; // Friction
-            particle.userData.velocity.z *= 0.8;
-          }
-        } else {
-          // Remove expired particle
-          this.scene.remove(particle);
-        }
-      });
-      
-      // Continue animation if particles are still active
-      if (activeParticles > 0) {
-        requestAnimationFrame(animateFrame);
-      }
-    };
-    
-    animateFrame();
-  }
-  
-  cleanupParticleSystem(wall: THREE.Object3D) {
-    const particles = this.particleSystems.get(wall);
-    if (particles) {
-      particles.forEach((particle: any) => {
-        this.scene.remove(particle);
-      });
-      this.particleSystems.delete(wall);
-    }
   }
   
   // Method to set inventory reference
