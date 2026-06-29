@@ -53,10 +53,17 @@ la copia inline. El plan se diseña para no repetirlo.
 | 5. `BuildPreview` (preview) | Extraído el ghost de preview (placement verde/rojo + highlight de borrado naranja) a `BuildPreview`, host tipado. Se extrajo el inline VIVO, NO se adoptó el `BuildingPreview.ts` borrado (estaba rancio: su firma usaba el `animatingWalls` que la Fase 2 eliminó). `previewMesh` sigue en `BuildingSystem` (lo comparten placement/break/HUD); helpers compartidos (`findBreakableParent`, validación, `isCursorOverUI`) se quedan. `getCellKey` muerto borrado. | medio | ✅ hecha (visual, no testeable headless; va al playtest) |
 | 6. `PlacementController` | `buildWall` (acción de colocar: validar→cobrar→colocar→trackear→animar, con la rama dual local/red de `requestPlace` intacta) + `materializeNetworkBuilding`. Host tipado; stubs finos. Los helpers de validación (`getOccupiedCells`/`checkPhysical`/`checkPlayer`) y `requestPlace` se quedan en el host (compartidos con el preview / los pone Game). | alto | ✅ hecha (toca red → playtest pendiente: place de dos clientes) |
 | 7. `BreakController` | `deleteWall`/`breakObject`/`completeWallBreak` (con la rama dual local/red de `requestRemove` intacta) + `removeNetworkBuilding`. Host tipado; stubs para `deleteWall` y `removeNetworkBuilding`. `findBreakableParent` y `requestRemove` se quedan en el host. | alto | ✅ hecha (toca red → playtest pendiente: break de dos clientes) |
-| 8. `BuildInput` + adelgazar | Listeners → despacho a controladores. `BuildingSystem` queda como orquestador (~300-400 líneas). | medio | pendiente |
+| 8. `BuildInput` + adelgazar | Listeners de teclado/ratón + `updateMousePosition`/`isCursorOverUI` → `BuildInput`, que despacha a los controladores vía host tipado. `BuildingSystem` queda como orquestador (**681 líneas**, desde 2562). De paso se arregló una fuga: el inline no quitaba los listeners de mousemove/click en `destroy`; `BuildInput.destroy()` sí. | medio | ✅ hecha (input → playtest) |
 
 Mejor ratio: Fases 0-3 (limpian huérfanos, DOM y efectos sin tocar la lógica de colocación,
 que es el núcleo de riesgo). 4-8 son el grueso y se hacen con el checklist de Fase 0 en mano.
+
+**Estado: las 8 fases están hechas.** `BuildingSystem.ts` pasó de 2562 a 681 líneas (orquestador
+que cablea los subsistemas, mantiene los métodos de modo/nivel, los helpers de validación
+compartidos, y stubs finos). Subsistemas: `BuildingResourceManager`, `BuildingAnimations`,
+`BuildHUD`, `BuildTracking` (+ tests), `BuildPreview`, `PlacementController`, `BreakController`,
+`BuildInput`. Pendiente: **playtest de navegador** de las fases 4-8 (estado, preview, placement,
+demolición, input), en especial las dos rutas de red, antes de merge.
 
 ## Checklist de smoke manual (Fase 0)
 
