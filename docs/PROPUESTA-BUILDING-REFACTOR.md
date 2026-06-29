@@ -48,7 +48,7 @@ la copia inline. El plan se diseña para no repetirlo.
 | 0. Red de seguridad | Checklist de smoke + tests de lógica pura (footprint/celdas, recursos). | bajo | ✅ hecha |
 | 1. Reconciliar huérfanos | Borrar `BuildingPreview.ts` y `WallIntersectionHelper.ts`; hacer de `BuildingResourceManager` el único dueño de recursos y borrar los métodos inline. | bajo | ✅ hecha |
 | 2. Efectos/animaciones | Adoptado el módulo `BuildingAnimations` (4º huérfano, ya existía completo) en vez de crear `BuildEffects`: `BuildingSystem` delega colocación/destrucción y partículas, y se borra el código inline + el estado `animatingWalls`/`particleSystems`. | bajo | ✅ hecha (verificar *sensación* de animación en playtest: el módulo difiere del inline en pooling y compleción por Promesa) |
-| 3. `BuildHUD` (DOM) | Menú de selección, texto de construcción, avisos, floating text. Terminar bien lo que intentaba `BuildingUI.ts`. | medio | pendiente |
+| 3. `BuildHUD` (DOM) | Extraído el menú de selección + thumbnails 3D, el banner de modo/coste y el floating text a `BuildHUD`, con el host tipado como `BuildingSystem` (typecheck caza cualquier prefijo mal). `BuildingSystem` baja a ~1410 líneas y mantiene stubs finos. Se extrajo el inline VIVO (no se adoptó el `BuildingUI.ts` borrado: estaba divergido en ambos sentidos). | medio | ✅ hecha (DOM no testeable headless; el menú es la superficie más densa, exprimirlo en el playtest) |
 | 4. `BuildTracking` (estado) | `builtWalls`+`occupiedCells`+`cellToWallMap`+`builtObjectsByType` con API add/remove/query. Migrar save/restore, `ClientWorld`, `DebugUI`. **Desacopla el resto.** | medio-alto | pendiente |
 | 5. Wire `BuildingPreview` | Re-extraer el preview sobre `BuildTracking`; borrar la copia inline. | medio | pendiente |
 | 6. `PlacementController` | `buildWall` + validación + `requestPlace` + `materializeNetworkBuilding`. | alto | pendiente |
@@ -91,6 +91,11 @@ Tras cada fase, en navegador. Single-player salvo donde diga multi.
 Los `setTimeout` de sincronización; los debug indicators; `window.gameInstance` (no `window.game`);
 la ruta dual de red (no mutar estado de mundo en input en modo red); que cada UI inyecta su
 propio `<style>` (no hay hoja central); el casing exacto de ficheros en imports.
+
+## Deuda conocida (backlog, no bloquea fases)
+
+- **Fuga de contextos WebGL en los thumbnails del menú.** `BuildHUD.create3DPreview` crea un `THREE.WebGLRenderer` por buildable y nunca lo desecha, y `showSelectionScreen` re-ejecuta `initializeSelectionPreviews` en cada refresco (incluido cada `selectBuildObject`). Cada refresco filtra ~5 contextos hacia el límite del navegador (~16). Es preexistente (la Fase 3 lo movió tal cual, no lo introdujo). Fix futuro: un `BuildHUD.destroy()` / desechar-antes-de-recrear.
+- **Recuperar `BuildingPreview.ts` para la Fase 5** (ver nota de fase): se borró en la Fase 1 como muerto; al preferir adoptar huérfanos, conviene recuperarlo del historial en vez de rehacerlo.
 
 ## Resultado objetivo
 
