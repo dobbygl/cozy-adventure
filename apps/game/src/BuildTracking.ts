@@ -56,6 +56,21 @@ export class BuildTracking {
     }
   }
 
+  /**
+   * Untrack a building and free its footprint on whichever level actually owns it, matched by
+   * wall identity rather than the current level. Use this for demolition: the confirmed
+   * building_removed (and reconnect snapshots) can arrive while the player is viewing a
+   * different level than the one this building was tracked on, where the current-level-only
+   * `remove` would drop the mesh but leak its reserved cells. Returns the freed cell keys
+   * (for per-cell UI cleanup such as debug indicators).
+   */
+  removeAcrossLevels(wall: THREE.Object3D): string[] {
+    const index = this.builtWalls.indexOf(wall);
+    if (index !== -1) this.builtWalls.splice(index, 1);
+    this.registry.removeBuiltObject(wall);
+    return this.levelManager.removeWallFromAllLevels(wall);
+  }
+
   /** Find a tracked building by its stable network id (multiplayer). */
   findByNetworkId(networkId: number): THREE.Object3D | undefined {
     return this.builtWalls.find((wall) => wall.userData.networkId === networkId);
