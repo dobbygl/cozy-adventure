@@ -1,15 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CompanionAnimator } from './companion/CompanionAnimator.js';
 
 export class DogCompanion {
   scene: THREE.Scene;
   player: any;
   // Assigned in load() (or its fallback); always present by the time AI methods run.
   mesh!: THREE.Object3D;
-  mixer: THREE.AnimationMixer | null;
-  animations: Record<string, THREE.AnimationAction>;
-  currentAnimation: THREE.AnimationAction | null;
-  currentAnimationName: string | null;
+  animator!: CompanionAnimator;
   followDistance: number;
   minFollowDistance: number;
   wanderRadius: number;
@@ -37,11 +35,7 @@ export class DogCompanion {
   constructor(scene: THREE.Scene, player: any) {
     this.scene = scene;
     this.player = player;
-    this.mixer = null;
-    this.animations = {};
-    this.currentAnimation = null;
-    this.currentAnimationName = null;
-    
+
     // AI behavior properties
     this.followDistance = 3;
     this.minFollowDistance = 1.5;
@@ -93,33 +87,10 @@ export class DogCompanion {
         }
       });
       
-      // Set up animations if available
-      if (gltf.animations && gltf.animations.length > 0) {
-        this.mixer = new THREE.AnimationMixer(this.mesh);
-        
-        gltf.animations.forEach((clip) => {
-          const action = this.mixer!.clipAction(clip);
-          this.animations[clip.name] = action;
-          console.log('Available animation:', clip.name); // Debug log
-        });
-        
-        // Play idle animation by default - try common variations
-        if (this.animations['idle']) {
-          this.playAnimation('idle');
-        } else if (this.animations['Idle']) {
-          this.playAnimation('Idle');
-        } else if (this.animations['T-Pose']) {
-          this.playAnimation('T-Pose');
-        } else {
-          // Play the first available animation
-          const firstAnimation = Object.keys(this.animations)[0];
-          if (firstAnimation) {
-            this.playAnimation(firstAnimation);
-            console.log('Playing first available animation:', firstAnimation);
-          }
-        }
-      }
-      
+      // Set up animations (inert if the model ships none)
+      this.animator = new CompanionAnimator(this.mesh, gltf.animations ?? []);
+      this.animator.playDefault();
+
       this.scene.add(this.mesh);
       
       // Create mouth container for holding items
@@ -136,43 +107,22 @@ export class DogCompanion {
       this.mesh = new THREE.Mesh(geometry, material);
       this.mesh.position.set(0, 0.15, 0);
       this.scene.add(this.mesh);
-      
+
+      // Fallback mesh has no clips: an inert animator keeps later play()/update() safe.
+      this.animator = new CompanionAnimator(this.mesh);
+
       // Create mouth container for fallback mesh too
       this.createMouthContainer();
-      
+
       return this.mesh;
     }
-  }
-
-  playAnimation(animationName: string): boolean {
-    if (!this.mixer || !this.animations[animationName]) {
-      console.log('Animation not found:', animationName, 'Available:', Object.keys(this.animations));
-      return false;
-    }
-    
-    // Don't switch if already playing the same animation
-    if (this.currentAnimationName === animationName) {
-      return true;
-    }
-    
-    if (this.currentAnimation) {
-      this.currentAnimation.fadeOut(0.2);
-    }
-    
-    this.currentAnimation = this.animations[animationName];
-    this.currentAnimationName = animationName;
-    this.currentAnimation.reset().fadeIn(0.2).play();
-    console.log('Playing animation:', animationName);
-    return true;
   }
 
   update(deltaTime: number, droppedItems: any[] = []): void {
     if (!this.mesh || !this.player?.mesh) return;
     
     // Update animations
-    if (this.mixer) {
-      this.mixer.update(deltaTime);
-    }
+    this.animator.update(deltaTime);
     
     // Apply gravity and ground collision
     this.updatePhysics(deltaTime);
@@ -298,7 +248,7 @@ export class DogCompanion {
       this.mesh.position.add(movement);
       
       // Play walk animation when moving
-      this.tryPlayWalkAnimation();
+      this.animator.playWalk();
       
       // Rotate to face movement direction
       this.rotateTowards(direction, deltaTime);
@@ -309,11 +259,11 @@ export class DogCompanion {
         this.startWandering();
       } else {
         this.state = 'idle';
-        this.tryPlayIdleAnimation();
+        this.animator.playIdle();
       }
     } else {
       // Within follow range but not too close - idle
-      this.tryPlayIdleAnimation();
+      this.animator.playIdle();
     }
   }
 
@@ -351,12 +301,12 @@ export class DogCompanion {
       this.mesh.position.add(movement);
       
       // Play walk animation when wandering
-      this.tryPlayWalkAnimation();
+      this.animator.playWalk();
       
       this.rotateTowards(direction, deltaTime);
     } else {
       // Reached target, maybe go back to following
-      this.tryPlayIdleAnimation();
+      this.animator.playIdle();
       if (Math.random() < 0.3) {
         this.state = 'following';
       } else {
@@ -410,7 +360,7 @@ export class DogCompanion {
         this.mesh.position.add(movement);
         
         // Play walk animation when fetching
-        this.tryPlayWalkAnimation();
+        this.animator.playWalk();
         
         this.rotateTowards(direction, deltaTime);
       } else {
@@ -441,7 +391,7 @@ export class DogCompanion {
           this.returnToPlayer = true;
         }
         
-        this.tryPlayIdleAnimation();
+        this.animator.playIdle();
         this.bark(); // Excited bark when fetching item
       }
     } else if (this.returnToPlayer) {
@@ -462,7 +412,7 @@ export class DogCompanion {
         this.mesh.position.add(movement);
         
         // Play walk animation when returning to player
-        this.tryPlayWalkAnimation();
+        this.animator.playWalk();
         
         this.rotateTowards(direction, deltaTime);
       } else {
@@ -482,7 +432,7 @@ export class DogCompanion {
           // Remove all visual items from mouth
           this.removeItemFromMouth();
           
-          this.tryPlayIdleAnimation();
+          this.animator.playIdle();
           this.bark(); // Happy bark after successful delivery
           
         } else {
@@ -500,7 +450,7 @@ export class DogCompanion {
     distanceToPlayer: number
   ): void {
     // Ensure idle animation is playing
-    this.tryPlayIdleAnimation();
+    this.animator.playIdle();
     
     // If player moves away, start following
     if (distanceToPlayer > this.followDistance * 1.5) {
@@ -890,27 +840,18 @@ export class DogCompanion {
     console.log('🐕 Woof!');
     
     // Play bark animation briefly
-    const barkPlayed = this.tryPlayBarkAnimation();
-    
+    const barkPlayed = this.animator.playBark();
+
     // Return to previous animation after bark
     setTimeout(() => {
       this.restorePreviousAnimation();
     }, barkPlayed ? 1000 : 100); // Shorter timeout if no bark animation
-    
+
     // You could add sound effects here in the future
-  }
-  tryPlayIdleAnimation() {
-    return this.playAnimation('idle') || this.playAnimation('Idle');
-  }
-  tryPlayWalkAnimation() {
-    return this.playAnimation('walk') || this.playAnimation('Walk') || this.playAnimation('run');
-  }
-  tryPlayBarkAnimation() {
-    return this.playAnimation('bark') || this.playAnimation('Bark');
   }
   restorePreviousAnimation() {
     if (this.state === 'idle') {
-      this.tryPlayIdleAnimation();
+      this.animator.playIdle();
     } else if (this.state === 'following' || this.state === 'wandering' || this.state === 'fetching') {
       // Check if dog is actually moving before playing walk animation
       const isMoving = this.state === 'fetching' || 
@@ -920,9 +861,9 @@ export class DogCompanion {
                        this.mesh.position.distanceTo(this.wanderTarget) > 0.5);
       
       if (isMoving) {
-        this.tryPlayWalkAnimation();
+        this.animator.playWalk();
       } else {
-        this.tryPlayIdleAnimation();
+        this.animator.playIdle();
       }
     }
   }
@@ -1109,8 +1050,6 @@ export class DogCompanion {
     if (this.mesh) {
       this.scene.remove(this.mesh);
     }
-    if (this.mixer) {
-      this.mixer.stopAllAction();
-    }
+    this.animator.stop();
   }
 }
