@@ -5,6 +5,7 @@ import { BuildingSaveManager } from './BuildingSaveManager.js';
 import { createPlacedBuildingMesh } from './BuildingMeshFactory.js';
 import { BuildingAnimations } from './BuildingAnimations.js';
 import { BuildHUD } from './BuildHUD.js';
+import { BuildTracking } from './BuildTracking.js';
 import { LevelManager } from './LevelManager.js';
 import type { Inventory } from './inventory.js';
 import type { CollisionSystem } from './CollisionSystem.js';
@@ -35,7 +36,7 @@ export class BuildingSystem {
   isBuilding: boolean;
   previewMesh: THREE.Object3D | null;
   wallMesh: THREE.Object3D | null;
-  builtWalls: THREE.Object3D[];
+  tracking: BuildTracking;
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
   buildingMode: string;
@@ -47,9 +48,6 @@ export class BuildingSystem {
   showDebugIndicators: boolean;
   animations: BuildingAnimations;
   player: any;
-  // Assigned during init()/updateLevelReferences() or in event handlers, not the constructor.
-  occupiedCells!: Set<string>;
-  cellToWallMap!: Map<string, THREE.Object3D>;
   itemRegistry!: any;
   gridHelper!: any;
   hud!: BuildHUD;
@@ -96,7 +94,11 @@ export class BuildingSystem {
     
     // Initialize level manager
     this.levelManager = new LevelManager(scene, 2.0, 50); // gridSize=2.0, gridExtent=50
-    
+
+    // Single write path for building bookkeeping: coordinates builtWalls (here), per-level
+    // occupancy + cell->wall (LevelManager) and by-type instances (registry).
+    this.tracking = new BuildTracking(this.levelManager, this.objectsRegistry);
+
     // Grid settings (delegated to LevelManager)
     this.gridSize = this.levelManager.gridSize;
     this.gridExtent = this.levelManager.gridExtent;
@@ -105,7 +107,7 @@ export class BuildingSystem {
     this.isBuilding = false;
     this.previewMesh = null;
     this.wallMesh = null; // Template wall mesh
-    this.builtWalls = []; // Array to track built walls
+    // builtWalls now lives in BuildTracking (see this.tracking), exposed via a getter.
     // this.gridHelper = null; // REMOVED - Grid is now fully managed by LevelManager
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
@@ -203,12 +205,27 @@ async init() {
     this.levelManager.updateGridVisibility(this.isBuilding);
   }
   
-updateLevelReferences() {
-    // Update legacy references to point to current level data
-    this.occupiedCells = this.getCurrentLevelOccupiedCells();
-    this.cellToWallMap = this.getCurrentLevelCellToWallMap();
+  updateLevelReferences() {
+    // No-op: occupiedCells/cellToWallMap are now getters that always read the current
+    // level's maps from LevelManager, so there is nothing to re-point on a level switch.
+    // Kept as a method so its existing callers (init, switchToLevel) don't need touching.
   }
-  
+
+  /** The placed building meshes (delegates to BuildTracking; the single owner). */
+  get builtWalls(): THREE.Object3D[] {
+    return this.tracking.builtWalls;
+  }
+
+  /** Current level's occupied cells (live view; LevelManager owns it). */
+  get occupiedCells(): Set<string> {
+    return this.levelManager.getCurrentLevelOccupiedCells();
+  }
+
+  /** Current level's cell->wall map (live view; LevelManager owns it). */
+  get cellToWallMap(): Map<string, THREE.Object3D> {
+    return this.levelManager.getCurrentLevelCellToWallMap();
+  }
+
   getCurrentLevelOccupiedCells() {
     // Delegate to LevelManager
     return this.levelManager.getCurrentLevelOccupiedCells();
@@ -832,37 +849,13 @@ updateLevelReferences() {
     // Consume resources from inventory
     this.resourceManager.consumeResources(this.selectedBuildObject);
     
-    // Add to tracking arrays and mark all cells as occupied
-    this.builtWalls.push(newWall);
-    
-    // Add to type-specific tracking via registry - ensure proper registration
-    console.log(`Registering built object: ${this.selectedBuildObject}`, newWall);
-    this.objectsRegistry.addBuiltObject(this.selectedBuildObject, newWall);
-    
-    // Verify registration was successful
-    const registeredCount = this.objectsRegistry.getBuiltObjectCount(this.selectedBuildObject);
-    console.log(`Registry now contains ${registeredCount} objects of type: ${this.selectedBuildObject}`);
-    
-    console.log(`📍 Tracking ${occupiedCells.length} cells for new wall:`, occupiedCells);
-    console.log(`  Wall object:`, newWall);
-    console.log(`  Wall position:`, newWall.position);
-    console.log(`  Wall scale:`, newWall.scale.x);
-    
-    occupiedCells.forEach(cellKey => {
-      // Add to current level's occupied cells through LevelManager
-      this.levelManager.addOccupiedCell(cellKey);
-      this.cellToWallMap.set(cellKey, newWall);
-      
-      console.log(`  ✓ Mapped cell ${cellKey} to wall at ${newWall.position.x}, ${newWall.position.z}`);
-      
-      // Create visual debug indicator if debug mode is enabled
-      if (this.showDebugIndicators) {
-        this.createDebugIndicator(cellKey);
-      }
-    });
-    
-    console.log(`Total cells now tracked: ${this.occupiedCells.size}`);
-    console.log(`Total cell mappings: ${this.cellToWallMap.size}`);
+    // Record the building + reserve its footprint cells through the single write path.
+    this.tracking.add(newWall, this.selectedBuildObject, occupiedCells);
+
+    // Visual debug indicators (build-mode only) for the cells it now holds.
+    if (this.showDebugIndicators) {
+      occupiedCells.forEach((cellKey) => this.createDebugIndicator(cellKey));
+    }
     
     // Start placement animation
     this.animations.playPlacementAnimation(newWall);
@@ -1021,67 +1014,19 @@ updateLevelReferences() {
   completeWallBreak(objectToBreak: THREE.Object3D) {
     // Clean up building system tracking
     if (objectToBreak.userData.isBuildingWall) {
-      // CRITICAL FIX: Find ALL cells that belonged to this specific wall
-      const wallCells = [];
-      
-      // Search through cellToWallMap to find all cells that belong to this wall
-      for (const [cellKey, wallObject] of this.cellToWallMap.entries()) {
-        if (wallObject === objectToBreak) {
-          wallCells.push(cellKey);
-        }
-      }
-      
-      console.log(`🔍 Breaking wall at position:`, objectToBreak.position);
-      console.log(`  Wall scale: ${objectToBreak.scale.x}`);
-      console.log(`  Wall rotation: ${objectToBreak.rotation.y} radians = ${(objectToBreak.rotation.y * 180 / Math.PI).toFixed(0)}°`);
-      console.log(`  Found ${wallCells.length} cells belonging to this wall:`, wallCells);
-      
+      // The cells this wall holds, with a fallback recompute if the map lost them
+      // (e.g. a wall whose mapping was dropped) — keeps a stray wall breakable.
+      let wallCells = this.tracking.cellsFor(objectToBreak);
       if (wallCells.length === 0) {
-        console.warn('⚠️ No cells found for this wall in cellToWallMap - trying fallback method');
-        
-        // Fallback: Use wall type for cell calculation
         const originalSelectedObject = this.selectedBuildObject;
         this.selectedBuildObject = 'wall';
-        const fallbackCells = this.getOccupiedCells(objectToBreak.position, objectToBreak.rotation.y);
+        wallCells = this.getOccupiedCells(objectToBreak.position, objectToBreak.rotation.y);
         this.selectedBuildObject = originalSelectedObject;
-        
-        console.log('  Fallback calculated cells:', fallbackCells);
-        wallCells.push(...fallbackCells);
       }
-      
-      // Remove from tracking arrays first
-      const wallIndex = this.builtWalls.indexOf(objectToBreak);
-      if (wallIndex !== -1) {
-        this.builtWalls.splice(wallIndex, 1);
-        console.log(`  Removed wall from builtWalls array (index ${wallIndex})`);
-      }
-      
-      // Remove from type-specific tracking via registry
-      this.objectsRegistry.removeBuiltObject(objectToBreak);
-      
-      // Remove ALL cells that belonged to this wall from current level
-      let cellsFreed = 0;
-      wallCells.forEach(cellKey => {
-        // Remove from current level's occupied cells through LevelManager
-        if (this.levelManager.removeOccupiedCell(cellKey)) {
-          cellsFreed++;
-          console.log(`    ✓ Freed cell: ${cellKey}`);
-        } else {
-          console.log(`    ⚠️ Cell ${cellKey} was not in current level's occupied cells`);
-        }
-        
-        if (this.cellToWallMap.has(cellKey)) {
-          this.cellToWallMap.delete(cellKey);
-          console.log(`    ✓ Removed cell mapping: ${cellKey}`);
-        }
-        
-        // Remove visual debug indicator
-        this.removeDebugIndicator(cellKey);
-      });
-      
-      console.log(`  Successfully freed ${cellsFreed} cells`);
-      console.log('  Remaining occupied cells after break:', Array.from(this.occupiedCells));
-      console.log('  Remaining cell mappings:', this.cellToWallMap.size);
+
+      // Untrack the building (walls list + registry) and free its cells, all in one path.
+      this.tracking.remove(objectToBreak, wallCells);
+      wallCells.forEach((cellKey) => this.removeDebugIndicator(cellKey));
     }
     
     // Remove object from scene (the animating flag and particle cleanup are owned by
@@ -1189,18 +1134,12 @@ updateLevelReferences() {
    * (skewing save serialization and per-type counts).
    */
   removeNetworkBuilding(networkId: number): void {
-    const wall = this.builtWalls.find((w) => w.userData.networkId === networkId);
+    const wall = this.tracking.findByNetworkId(networkId);
     if (!wall) return;
     this.scene.remove(wall);
     this.collisionSystem?.removeCollider(wall);
-    this.objectsRegistry.removeBuiltObject(wall);
-    this.builtWalls = this.builtWalls.filter((w) => w !== wall);
-    for (const [key, mapped] of this.cellToWallMap) {
-      if (mapped === wall) {
-        this.cellToWallMap.delete(key);
-        this.occupiedCells.delete(key);
-      }
-    }
+    // Untrack through the single write path (walls list + registry + the wall's cells).
+    this.tracking.remove(wall, this.tracking.cellsFor(wall));
   }
 
   // Clean up method
@@ -1223,11 +1162,8 @@ updateLevelReferences() {
       }
     });
     
-    // Clear all tracking data
-    this.builtWalls = [];
-    this.objectsRegistry.clearBuiltObjects();
-    this.occupiedCells.clear();
-    this.cellToWallMap.clear();
+    // Clear all tracking data through the single write path.
+    this.tracking.clear();
 
     // Tear down animations + particle systems (clears the pool and any live particles)
     this.animations.destroy();

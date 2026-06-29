@@ -861,34 +861,19 @@ export class SaveSystem {
     
     console.log('Clearing all existing buildings...');
     
-    // Clear from legacy builtWalls array
-    if (buildingSystem.builtWalls && Array.isArray(buildingSystem.builtWalls)) {
-      buildingSystem.builtWalls.forEach((building: any) => {
-        if (building && building.parent) {
-          building.parent.remove(building);
-        }
-        
-        // Remove from collision system
-        if (this.gameInstance.collisionSystem) {
-          this.gameInstance.collisionSystem.removeCollider(building);
-        }
-      });
-      buildingSystem.builtWalls.length = 0;
-    }
-    
-    // Clear from objects registry if available
-    if (buildingSystem.objectsRegistry && buildingSystem.objectsRegistry.clearAllBuiltObjects) {
-      buildingSystem.objectsRegistry.clearAllBuiltObjects();
-    }
-    
-    // Clear cell tracking systems
-    if (buildingSystem.occupiedCells) {
-      buildingSystem.occupiedCells.clear();
-    }
-    if (buildingSystem.cellToWallMap) {
-      buildingSystem.cellToWallMap.clear();
-    }
-    
+    // Remove each building's mesh + collider from the scene (read the list before clearing).
+    buildingSystem.builtWalls.forEach((building: any) => {
+      if (building && building.parent) {
+        building.parent.remove(building);
+      }
+      if (this.gameInstance.collisionSystem) {
+        this.gameInstance.collisionSystem.removeCollider(building);
+      }
+    });
+
+    // Then forget them all through the single write path (walls list + registry + cells).
+    buildingSystem.tracking.clear();
+
     console.log('All existing buildings cleared');
   }
   // Restore individual building
@@ -1012,16 +997,6 @@ export class SaveSystem {
   registerRestoredBuilding(building: THREE.Object3D, buildingType: string, buildingInfo: any) {
     const buildingSystem = this.gameInstance.buildingSystem;
     
-    // Add to legacy walls array (for backward compatibility)
-    if (buildingSystem.builtWalls) {
-      buildingSystem.builtWalls.push(building);
-    }
-    
-    // Register with objects registry if available
-    if (buildingSystem.objectsRegistry && buildingSystem.objectsRegistry.registerBuiltObject) {
-      buildingSystem.objectsRegistry.registerBuiltObject(buildingType, building);
-    }
-    
     // Register with collision system
     if (this.gameInstance.collisionSystem) {
       if (this.gameInstance.collisionSystem.addCollider) {
@@ -1031,40 +1006,13 @@ export class SaveSystem {
         this.gameInstance.collisionSystem.addBuilding(building);
       }
     }
-    
-    // Mark cells as occupied - use level manager if available
-    const levelManager = this.gameInstance.levelManager;
-    const buildingLevel = buildingInfo.level || 0;
-    
-    if (levelManager) {
-      // Set level manager to the building's level temporarily to mark cells correctly
-      const originalLevel = levelManager.currentLevel;
-      levelManager.currentLevel = buildingLevel;
-      
-      const occupiedCells = this.getOccupiedCellsForBuilding(buildingInfo, buildingSystem);
-      occupiedCells.forEach(cellKey => {
-        levelManager.addOccupiedCell(cellKey);
-        
-        const currentLevelCellToWallMap = levelManager.getCurrentLevelCellToWallMap();
-        currentLevelCellToWallMap.set(cellKey, building);
-      });
-      
-      // Restore original level
-      levelManager.currentLevel = originalLevel;
-      
-      console.log(`Marked ${occupiedCells.length} cells as occupied on level ${buildingLevel}`);
-    } else {
-      // Fallback to legacy system
-      const occupiedCells = this.getOccupiedCellsForBuilding(buildingInfo, buildingSystem);
-      occupiedCells.forEach(cellKey => {
-        if (buildingSystem.occupiedCells) {
-          buildingSystem.occupiedCells.add(cellKey);
-        }
-        if (buildingSystem.cellToWallMap) {
-          buildingSystem.cellToWallMap.set(cellKey, building);
-        }
-      });
-    }
+
+    // Record the building + reserve its cells through the single write path (walls list +
+    // registry + current-level occupancy). Occupancy lands on the current level — the
+    // behaviour this path already had: its old per-level "dance" keyed off
+    // gameInstance.levelManager, which is never set, so the current-level fallback ran.
+    const occupiedCells = this.getOccupiedCellsForBuilding(buildingInfo, buildingSystem);
+    buildingSystem.tracking.add(building, buildingType, occupiedCells);
   }
   // Calculate the grid cells a restored building occupies, via the shared footprint math
   // (the same buildingFootprintCells the live placement and the server use), so a restored

@@ -218,33 +218,20 @@ export class BuildingSaveManager {
       this.buildingSystem.collisionSystem.addCollider(building, 'mesh');
     }
 
-    // Add to tracking arrays
-    this.buildingSystem.builtWalls.push(building);
-
-    // Ensure proper type handling for registry
+    // Resolve the registry type (it may arrive as an object), compute the footprint cells
+    // (the math keys off selectedBuildObject, so borrow it), then record everything through
+    // the single write path. No currentLevel change here, so a materialized building tracks
+    // against the level the player stands on (a pre-existing quirk this refactor preserves).
     const actualType =
       typeof type === 'object' && (type as BuildingTypeObject).type
         ? (type as BuildingTypeObject).type
         : type;
-    console.log(`Registering restored building: ${actualType}`, building);
-    this.buildingSystem.objectsRegistry.addBuiltObject(actualType, building);
-
-    // Verify registration was successful
-    const registeredCount = this.buildingSystem.objectsRegistry.getBuiltObjectCount(actualType);
-    console.log(`Registry now contains ${registeredCount} restored objects of type: ${actualType}`);
-
-    // Calculate and mark occupied cells
     const originalSelectedObject = this.buildingSystem.selectedBuildObject;
-
     this.buildingSystem.selectedBuildObject = actualType;
     const occupiedCells = this.buildingSystem.getOccupiedCells(positionVector, rotation);
     this.buildingSystem.selectedBuildObject = originalSelectedObject;
 
-    // Mark cells as occupied
-    occupiedCells.forEach((cellKey: string) => {
-      this.buildingSystem.occupiedCells.add(cellKey);
-      this.buildingSystem.cellToWallMap.set(cellKey, building);
-    });
+    this.buildingSystem.tracking.add(building, actualType as string, occupiedCells);
 
     console.log(`Successfully restored ${actualType} at position (${position.x}, ${position.y}, ${position.z})`);
     return true;
