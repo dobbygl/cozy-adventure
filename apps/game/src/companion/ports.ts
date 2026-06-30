@@ -43,10 +43,10 @@ export interface FetchedItem {
  * Inventory operations a companion delivery performs, wrapping game.inventory +
  * game.itemRegistry.
  *
- * NOTE (multiplayer): addItem mutates the LOCAL inventory. In network mode that
- * is the desync the dog currently risks; this port is the single point where a
- * future server-authoritative fix would route the grant through a command
- * instead. Out of scope for this refactor (behavior preserved).
+ * NOTE (multiplayer): addItem mutates the LOCAL inventory, so it is SINGLE-PLAYER ONLY. In
+ * network mode the dog is server-authoritative — Companion.setMovement swaps the local brain
+ * for ServerDrivenMovement, so updateBehavior (and this delivery) never runs; the grant comes
+ * from the server as an inventory_delta when its dog grabs the drop. Same for DroppedItemsPort.
  */
 export interface InventoryPort {
   /** Resolve an item id to its registry definition, or undefined if unknown. */

@@ -13,6 +13,7 @@ import { ItemDropSystem } from './ItemDropSystem.js';
 import { HealthSystem } from './HealthSystem.js';
 import { ItemUseSystem } from './ItemUseSystem.js';
 import { DogCompanion } from './DogCompanion.js';
+import { ServerDrivenMovement } from './companion/ServerDrivenMovement.js';
 import { MainMenu } from './MainMenu.js';
 import { SaveSystem } from './SaveSystem.js';
 import { InGameUI } from './InGameUI.js';
@@ -53,6 +54,9 @@ export class Game {
   healthSystem: HealthSystem | null;
   itemUseSystem: ItemUseSystem | null;
   dogCompanion: DogCompanion | null;
+  /** Renders the server-authoritative dog in network mode (fed by the onDogState handler);
+   *  null in single-player, where the dog runs its own local brain. */
+  dogMovement: ServerDrivenMovement | null;
   pickupableItems: THREE.Object3D[];
   pickupPrompt: HTMLDivElement | null;
   nearestPickupableItem: THREE.Object3D | null;
@@ -106,6 +110,7 @@ export class Game {
     this.healthSystem = null;
     this.itemUseSystem = null;
     this.dogCompanion = null;
+    this.dogMovement = null;
     this.pickupableItems = [];  // Array to hold multiple pickupable items
     this.pickupPrompt = null;  // Floating UI element
     this.nearestPickupableItem = null;  // Track the nearest item for UI display
@@ -230,6 +235,9 @@ export class Game {
           // Server-authoritative inventory change (chop/pickup/drop): reflect it in
           // our local inventory. Closes the resource loop in network mode.
           onInventoryDelta: (itemId, delta) => this.applyInventoryDelta(itemId, delta),
+          // Server-authoritative dog (network mode): feed its state to the renderer. The dog
+          // mesh may not exist yet (created later in startGame), so this no-ops until then.
+          onDogState: (state) => this.dogMovement?.setState(state),
           // A command the server refused (placement, harvest, pickup, drop). The world is
           // server-authoritative and applies on the confirmed event, so a rejection means
           // nothing happened — without surfacing it the action just silently does nothing
@@ -953,6 +961,7 @@ addSampleItemsToInventory() {
     if (this.dogCompanion) {
       this.dogCompanion.destroy();
     }
+    this.dogMovement = null;
     
     // Clean up debug UI
     if (this.debugUI) {
@@ -1223,7 +1232,19 @@ async initializeDogCompanion() {
       // collision/inventory/UI through `this` rather than the window global.
       this.dogCompanion = new DogCompanion(this.scene!, this.player, () => this);
       await this.dogCompanion.load();
-      
+
+      // Network mode: the SERVER owns the dog (decisions + simulated position + pickups). Swap
+      // the local brain for a renderer driven by dog_state messages (DI via setMovement); the
+      // server's drop_removed/inventory_delta close the resource loop. The onDogState handler,
+      // registered before this dog existed, now has a target to feed.
+      if (this.sessionMode === 'network') {
+        this.dogMovement = new ServerDrivenMovement({
+          carry: this.dogCompanion.carry,
+          onDeliver: () => this.dogCompanion?.bark(),
+        });
+        this.dogCompanion.setMovement(this.dogMovement);
+      }
+
       // Position dog near player initially
       if (this.player && this.player.mesh) {
         this.dogCompanion.mesh.position.set(

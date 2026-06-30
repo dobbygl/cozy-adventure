@@ -13,7 +13,7 @@ import { issueToken, verifyToken } from './auth/identity';
 import { createDefaultPlayer } from './player';
 import { validateAvatarMove } from './session/avatarRelay';
 import { applyCommand } from './world/commands';
-import { runDogPickups, type DogPlayer } from './world/dog';
+import { DogSimulation, type DogPlayer } from './world/dog';
 import { PROTOCOL_VERSION } from '@cozy/shared';
 import type {
   ClientMessage,
@@ -60,6 +60,8 @@ export class GameServer {
   private lastTickAt = 0;
   private msSinceWorldTime = 0;
   private msSinceSave = 0;
+  /** Server-authoritative companion dogs (one per player); stepped every tick. */
+  private readonly dogSim = new DogSimulation();
 
   constructor(deps: GameServerDeps) {
     this.config = deps.config;
@@ -128,10 +130,11 @@ export class GameServer {
     this.world.tick(delta);
     this.sweepTimeouts();
     this.relayAvatars(now);
+    // The dog is simulated every tick (smooth movement); dog_state sends are throttled inside.
+    this.runDog(delta);
     this.msSinceWorldTime += delta;
     if (this.msSinceWorldTime >= 1000) {
       this.broadcastWorldTime();
-      this.runDog();
       this.msSinceWorldTime = 0;
     }
     this.msSinceSave += delta;
@@ -141,17 +144,35 @@ export class GameServer {
     }
   }
 
-  private runDog(): void {
+  private runDog(deltaMs: number): void {
     if (!this.world) return;
+    const active = this.sessions.activeSessions();
     const dogPlayers: DogPlayer[] = [];
-    for (const s of this.sessions.activeSessions()) {
+    for (const s of active) {
       if (!s.playerId) continue;
       const p = this.players.get(s.playerId);
       if (!p) continue;
       dogPlayers.push({ playerId: s.playerId, position: s.avatar?.position ?? null, inventory: p.inventory });
     }
-    const produced = runDogPickups(this.world, dogPlayers, this.world.gameTime);
-    for (const diff of produced) this.broadcast({ t: 'event', diff });
+    const step = this.dogSim.step(this.world, dogPlayers, deltaMs, this.world.gameTime);
+
+    // Drop removals are shared world: broadcast to everyone.
+    for (const diff of step.diffs) this.broadcast({ t: 'event', diff });
+    // Inventory grants + the dog's own state are private to the owner: send to that session.
+    for (const grant of step.grants) {
+      const owner = active.find((s) => s.playerId === grant.playerId);
+      if (owner) {
+        owner.send({ t: 'inventory_delta', itemId: grant.itemId, delta: grant.quantity });
+        this.metrics.incMessagesOut();
+      }
+    }
+    for (const state of step.states) {
+      const owner = active.find((s) => s.playerId === state.playerId);
+      if (owner) {
+        owner.send({ t: 'dog_state', position: state.position, target: state.target, carrying: state.carrying });
+        this.metrics.incMessagesOut();
+      }
+    }
   }
 
   /** Disconnect sessions that have gone silent past the grace window (FR-026). */

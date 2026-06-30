@@ -27,8 +27,12 @@ import type { ResourceNodeKind } from './resourceNodes';
  * networkId; the server emits the existing building_removed diff (which frees the
  * whole footprint) to EVERY client, so demolition is server-authoritative and
  * apply-on-confirm, just like placement (no client-side break in network mode).
+ * v6: dog_state message — the companion dog is now server-authoritative in network
+ * mode (the server owns its decisions + simulated position + pickups). The server
+ * pushes the owner a dog_state (target waypoint + low-rate authoritative position +
+ * carry count); the client renders/interpolates it. No client dog command.
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /**
  * Wire-contract id-space split. Base world entities (the seeded trees) are
@@ -220,6 +224,25 @@ export interface PongMessage {
   serverTime: number;
 }
 
+/**
+ * Server-authoritative state of the recipient's OWN companion dog (network mode). The server
+ * owns the dog's decisions + simulated position + pickups; the client only renders it. To stay
+ * light this is sent on meaningful change (new target / carry-count change) plus a low-rate
+ * position heartbeat — NOT a per-frame path like avatar_snapshots. The client steers the dog
+ * toward `target` (a fixed world point, e.g. a drop) or, when `target` is null, toward its own
+ * player ("follow", or "return" while carrying), and eases the rendered position toward
+ * `position` to correct drift. Private to the owner (peers don't see the dog yet).
+ */
+export interface DogStateMessage {
+  t: 'dog_state';
+  /** Authoritative dog position; the client eases its rendered dog toward this. */
+  position: Vec3;
+  /** Fixed world point the dog heads to (e.g. a drop), or null = follow/return to the owner. */
+  target: Vec3 | null;
+  /** Items carried in the mouth (visual count; the grant already happened at grab). */
+  carrying: number;
+}
+
 export type ErrorCode =
   | 'auth'
   // A playerId was presented without a valid token (e.g. a stale token after the server
@@ -254,6 +277,7 @@ export type ServerMessage =
   | WorldTimeMessage
   | WorldSnapshotMessage
   | InventoryDeltaMessage
+  | DogStateMessage
   | PongMessage
   | ErrorMessage
   | KickMessage;
