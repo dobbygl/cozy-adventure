@@ -23,6 +23,10 @@ export abstract class Companion {
   // Assigned in load() (or its fallback); always present by the time AI runs.
   mesh!: THREE.Object3D;
   animator!: CompanionAnimator;
+  // True once load() has finished (success or fallback) and onLoaded() has run, so every
+  // load-created field (mesh/animator + the subclass fields set in onLoaded) exists. Guards
+  // destroy() against a teardown that races a still-pending model load.
+  protected loaded = false;
   physics: CompanionPhysics;
   locomotion: CompanionLocomotion;
   // Movement tuning copied from the definition so behavior code reads this.speed
@@ -92,6 +96,7 @@ export abstract class Companion {
       this.scene.add(this.mesh);
 
       this.onLoaded();
+      this.loaded = true;
 
       console.log(`Companion '${this.definition.name}' loaded successfully`);
 
@@ -109,6 +114,7 @@ export abstract class Companion {
       this.animator = new CompanionAnimator(this.mesh);
 
       this.onLoaded();
+      this.loaded = true;
 
       return this.mesh;
     }
@@ -125,11 +131,17 @@ export abstract class Companion {
   }
 
   destroy(): void {
-    this.onDestroy();
+    // Teardown that touches load-created state runs only once load() has completed. destroy()
+    // can fire mid-load (e.g. the game is torn down while the GLTF is still fetching), where
+    // animator and the subclass's onLoaded-assigned fields are still undefined; running the
+    // hook / stopping the animator then would throw and abort the rest of cleanup.
+    if (this.loaded) {
+      this.onDestroy();
+      this.animator.stop();
+    }
     if (this.mesh) {
       this.scene.remove(this.mesh);
     }
-    this.animator.stop();
   }
 
   /** Per-frame AI for this companion. Runs after animation + physics each frame. */
@@ -139,6 +151,9 @@ export abstract class Companion {
   /** Hook: model + animator are ready and added to the scene. Default: nothing. */
   protected onLoaded(): void {}
 
-  /** Hook: companion is being torn down (before the mesh leaves the scene). */
+  /**
+   * Hook: companion is being torn down (before the mesh leaves the scene). Symmetric with
+   * onLoaded — only fires if onLoaded did, so it may safely touch load-created fields.
+   */
   protected onDestroy(): void {}
 }

@@ -71,6 +71,15 @@ describe('Companion (shared shell)', () => {
     expect(c.behaviorCalls).toEqual([{ dt: 0.05, items: [{ id: 'x' }] }]);
   });
 
+  it('destroy() before load() completes is a safe no-op (no throw, hook not fired)', () => {
+    const c = makeCompanion();
+    // No load() yet: mesh/animator and any onLoaded-assigned fields are still undefined,
+    // as during a teardown that races a still-pending GLTF fetch. destroy() must not throw
+    // (it used to hit animator.stop()/onDestroy on undefined state and abort cleanup).
+    expect(() => c.destroy()).not.toThrow();
+    expect(c.destroyedCount).toBe(0); // onDestroy is symmetric with onLoaded: not loaded -> not fired
+  });
+
   it('destroy() fires onDestroy, removes the mesh, and stops the animator', async () => {
     const c = makeCompanion();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
