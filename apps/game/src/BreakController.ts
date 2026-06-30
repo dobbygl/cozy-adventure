@@ -96,18 +96,21 @@ export class BreakController {
     const bs = this.buildingSystem;
     // Clean up building tracking
     if (objectToBreak.userData.isBuildingWall) {
-      // The cells this wall holds, with a fallback recompute if the map lost them
-      // (e.g. a wall whose mapping was dropped) — keeps a stray wall breakable.
-      let wallCells = bs.tracking.cellsFor(objectToBreak);
+      // Untrack the wall and free its footprint on whichever level actually owns it, matched
+      // by identity — so breaking a wall while viewing a different build level doesn't leak
+      // the cells on its own level (the same leak the network path had).
+      let wallCells = bs.tracking.removeAcrossLevels(objectToBreak);
       if (wallCells.length === 0) {
+        // Failsafe: a stray wall whose cell mapping was already dropped on every level.
+        // Recompute its footprint from position and free it on the current level (the only
+        // known target) so the wall stays rebuildable. removeAcrossLevels already dropped it
+        // from the walls list + registry, so remove() here only clears the recomputed cells.
         const originalSelectedObject = bs.selectedBuildObject;
         bs.selectedBuildObject = 'wall';
         wallCells = bs.getOccupiedCells(objectToBreak.position, objectToBreak.rotation.y);
         bs.selectedBuildObject = originalSelectedObject;
+        bs.tracking.remove(objectToBreak, wallCells);
       }
-
-      // Untrack the building (walls list + registry) and free its cells, all in one path.
-      bs.tracking.remove(objectToBreak, wallCells);
       wallCells.forEach((cellKey) => bs.removeDebugIndicator(cellKey));
     }
 
