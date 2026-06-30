@@ -27,6 +27,53 @@ Con la apuesta de producto/multijugador confirmada, el P2 ya no se ataca de arri
 
 Leyenda: ✅ hecho · ⏳ abierto · 🔜 ahora (prerrequisito multijugador) · 🔄 continuo · ⏭️ diferible.
 
+## Deuda técnica abierta (auditoría 2026-06-30)
+
+> Esta sección actualiza el diagnóstico al estado actual del repo, bastante por delante del de 2026-06-27. Desde entonces: la **migración a TypeScript estricto está completa** (ESM, ~19,8k líneas en `apps/game/src/`), el **multijugador autoritativo está implementado y mergeado a `main`** (specs 002 + 003, monorepo pnpm `@cozy/game` + `@cozy/shared` + `@cozy/server`), y se han hecho dos descomposiciones de monolitos que validan el patrón del equipo: **`BuildingSystem` 2562 → 681 líneas** (PR #2, mergeado) y **`DogCompanion` 1392 → 434** vía el framework `src/companion/` (PR #3, en rama). Las puertas de calidad siguen en verde (lint en warn, typecheck strict, test, build en CI con Node 22 y 24).
+>
+> Método de esta auditoría: CodeGraph más verificación directa sobre disco (rama `companion-refactor`), contrastada con el roadmap de abajo para listar solo deuda **abierta**, no lo ya resuelto. Las cifras vienen de un único pase de verificación consistente.
+
+Lo que ya **no aplica** del diagnóstico original (hecho o superado por la salida del iframe y la migración): toolchain TS y `@types/three`, ESLint flat config, CI, Vitest con tests de `inventory` y de los helpers JSON del save, `vite.config.js` (con `drop` de `console.log/info/debug` en prod), `pause()/resume()` reales, subdivisión del agua, `treeCollider.visible=false`, carga FBX en paralelo, validación de `origin` en postMessage y scripts del host (borrados con el iframe).
+
+Top 10 por impacto sobre la apuesta de multijugador y la mantenibilidad:
+
+| # | Deuda | Categoría | Esfuerzo · impacto | Roadmap |
+|---|-------|-----------|--------------------|---------|
+| 1 | Monolitos restantes (inventoryUI, game, player, MainMenu, SaveSystem) | Estructural | Alto · alto | área 2, ítem 16 |
+| 2 | El perro companion desincroniza el mundo en red | Corrección · MP | Bajo-medio · alto | nuevo (era MP) |
+| 3 | `destroy()` asimétrico: fuga de listeners y GPU al reiniciar | Ciclo de vida | Medio · medio | ítem 19 🔜 |
+| 4 | `SaveSystem` frágil y débilmente tipado | Persistencia | Medio · alto | área 4 + área 8 |
+| 5 | Sin manejo de pérdida de contexto WebGL | Robustez | Bajo-medio · medio | ítem 19 🔜 |
+| 6 | Erosión del tipado en bordes + lint no bloqueante | Tipado · gates | Medio · medio | área 4 |
+| 7 | `setTimeout` como sincronización entre sistemas | Acoplamiento | Medio · medio | ítem 17 🔜 |
+| 8 | `BuildingIntegrationSystem.ts` (495 líneas) sin uso | Código muerto | Bajo · bajo-medio | nuevo |
+| 9 | `PROTOCOL_VERSION` en lockstep sin negociación | Acoplamiento · ops | Bajo-medio · medio | nuevo (era MP) |
+| 10 | Sin abstracción de logging (498 `console.*`) | Observabilidad | Bajo · bajo | área 8 |
+
+**1. Monolitos restantes que mezclan render, DOM, CSS y estado.** `inventoryUI.ts` 1707 líneas, `game.ts` 1293, `player.ts` 1255, `MainMenu.ts` 1243, `SaveSystem.ts` 1207, `TreeChoppingSystem.ts` 916. `inventoryUI` es el peor caso (CSS, DOM, drag&drop y un mini-motor Three.js de preview en un solo módulo). CodeGraph marca `game.ts` y `BuildingSystem` sin tests que los cubran. A favor: el patrón ya está resuelto y validado dos veces (building y companion), esto es aplicarlo al backlog que queda. Empezar por extraer `ItemPreviewRenderer` de `inventoryUI`, el límite más nítido. Esfuerzo alto, impacto alto.
+
+**2. El perro companion desincroniza el mundo compartido en red.** `initializeDogCompanion()` se llama sin guarda de `sessionMode` en `startGame()`. `DeliveryService` (`InventoryPort.addItem`) y la baja de drops (`DroppedItemsPort.remove`) mutan inventario y arrays de drops **locales**, saltándose el camino comando → evento confirmado que usa cualquier otra mutación de mundo. En multijugador eso desincroniza clientes. Es bug latente, no solo deuda. Los puertos del companion localizan el arreglo en un sitio: enrutar `addItem`/`remove` por comandos, o guardar el perro a single-player. Quedó como follow-up consciente del refactor. Esfuerzo bajo-medio, impacto alto. Escenario B.
+
+**3. `destroy()` asimétrico: fuga de listeners y recursos GPU al reiniciar.** 79 `addEventListener` frente a 16 `removeEventListener` en `apps/game/src`, y solo 2 `AbortController` (capa de red). `setupEventListeners` añade handlers anónimos sin guardar referencia, no hay `renderer.dispose()` ni recorrido de escena liberando GPU. Cada reinicio acumula handlers y un renderer nuevo. Crítico para reconexión y cambio de sala de multijugador, que reinician sin recargar. Ítem 19 (🔜), abierto. Esfuerzo medio, impacto medio.
+
+**4. `SaveSystem` frágil y débilmente tipado.** `constructor(gameInstance: any)` más 30 anotaciones `any` (la mayor concentración del repo). Heurísticas de reparación manual de JSON (`fixScientificNotation`, documentado como roto para exponentes ≥ 1e21; `attemptJSONFix`), una rama de serialización "legacy fallback" y `version: '1.0.0'` hardcodeado sin migración en runtime. Un cambio de shape no detectado corrompe partidas sin aviso. Matiz: el versionado en runtime está **diferido a propósito** (sign-off por compatibilidad de partidas, ver ítem 12), no es un olvido; la deuda real es el tipado `any` de la fachada y las heurísticas frágiles. Esfuerzo medio, impacto alto.
+
+**5. Sin manejo de pérdida de contexto WebGL.** Cero listeners de `webglcontextlost` / `webglcontextrestored` en todo `apps/game/src`. El juego es PWA instalable orientada a táctil/móvil, donde perder el contexto es habitual: sin esto queda en negro hasta recargar. Sub-paso barato: `webglcontextlost` con `preventDefault` para evitar el cuelgue; el `restored` completo se apoya en el inventario de recursos del ítem 3, por eso van emparejados. Esfuerzo bajo-medio, impacto medio. Escenario A y B.
+
+**6. Erosión del tipado en los bordes + lint no bloqueante.** 138 `: any` y 28 `as any` en `apps/game/src`, más 33 `eslint-disable @typescript-eslint/no-explicit-any`. `pnpm lint` corre en modo warn: CI no falla por ello. La garantía de `strict: true` se diluye en los bordes DOM/Three/save sin red que frene la regresión. Focos: `SaveSystem` 30, `TreeChoppingSystem` 19, `player` 15, `inventoryUI` 15. Un `any` puntual en frontera Three es aceptable; la deuda es el volumen más la ausencia de gate. Subir reglas concretas a `error` por módulo a medida que se limpian. Esfuerzo medio, impacto medio.
+
+**7. `setTimeout` como sincronización entre sistemas.** 37 usos en `apps/game/src`: `game.ts` con `await sleep(500)`, `SaveSystem.loadGame` esperando 1000ms a que el juego se inicialice del todo, más `HealthSystem`, `BuildingAnimations`, `InGameUI`. Acoplamiento temporal frágil: si la carga tarda más, el orden se rompe sin error. Ítem 17 (🔜). Encadenar por `async/await` o callbacks sobre eventos reales (modelo cargado, sistema listo); los `setTimeout` cosméticos del loading screen pueden quedarse. Esfuerzo medio, impacto medio.
+
+**8. `BuildingIntegrationSystem.ts` (495 líneas) sin ninguna referencia.** Búsqueda en todo el repo: cero referencias en código, solo aparece en el checklist de `docs/MIGRACION-TYPESCRIPT.md`. Módulo migrado a TS pero nunca cableado. Aparenta pertenecer al subsistema de construcción y confunde la lectura. Junto a bits menores: la rama "legacy" de `serializeBuildings`, código comentado del `gridHelper` en `BuildingSystem.destroy`. Auditar imports dinámicos/barriles y eliminar. Esfuerzo bajo, impacto bajo-medio.
+
+**9. `PROTOCOL_VERSION` en lockstep cliente-servidor sin negociación.** `PROTOCOL_VERSION = 5` en `packages/shared/protocol.ts`; el servidor rechaza en duro con error `protocol_version` si no coincide (`server.ts:301`). Cualquier cambio de wire obliga a redesplegar cliente (GitHub Pages) y servidor (openclaw) en lockstep, o el cliente queda fuera. A corto, forzar el redeploy emparejado en el pipeline; a medio, negociación de versión o compatibilidad hacia atrás. Esfuerzo bajo-medio, impacto medio.
+
+**10. Sin abstracción de logging en el juego.** 498 `console.*` en `apps/game/src`; el servidor tiene `log.ts` con niveles y 0 console crudos. `inventory.addItem` vuelca ~12 líneas por ítem recogido. Matiz: el `vite.config` ya elimina `console.log/info/debug` en producción (esbuild `pure`), así que el ruido en prod está muy mitigado; queda que no hay logging con niveles (el strip es romo), `warn`/`error` en bucles sí se publican y en desarrollo la consola se inunda. Un logger leyendo `import.meta.env.DEV` equipara la disciplina del servidor. Esfuerzo bajo, impacto bajo.
+
+Menores abiertas, fuera del top 10: acoplamiento al DOM por strings de ID (~91 `getElementById` reconsultados), CSS-in-JS disperso (cada UI reinyecta su `<style>`), casing inconsistente de ficheros, e i18n/accesibilidad si se publica de cara a usuarios.
+
+Lectura del orden: para la apuesta de multijugador, atacar 2 → 3 → 9 (corrección de mundo compartido, teardown limpio para reconexión, gestión de despliegue). Para mantenibilidad a medio plazo, 1 → 6 → 8. El 5 (WebGL) es barato en su sub-paso y mejora la jugabilidad móvil ya.
+
 ## Estado actual (diagnóstico)
 
 Juego 3D de navegador con Three.js 0.160.0 y Vite 7, ~17,9k líneas en 33 módulos ESM de JavaScript plano. Corre embebido en una página host (iframe) y se comunica con `window.parent` vía `postMessage`. Números que marcan el terreno:
