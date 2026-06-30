@@ -6,6 +6,17 @@ import { CompanionLocomotion } from './CompanionLocomotion.js';
 import type { CompanionDefinition } from './CompanionDefinition.js';
 
 /**
+ * A pluggable per-frame movement/behavior driver (dependency injection). When set it REPLACES
+ * the subclass's local updateBehavior each frame: used in multiplayer, where the SERVER owns
+ * the dog's decisions + position and the client only renders the server-driven movement
+ * (target waypoint + interpolated authoritative position). Left unset in single-player, where
+ * the local updateBehavior brain runs. This is the "DI para controlar los movimientos" seam.
+ */
+export interface CompanionMovement {
+  update(companion: Companion, deltaTime: number): void;
+}
+
+/**
  * The shared shell every companion has: load the model, own the animator /
  * physics / locomotion collaborators, run the per-frame preamble (advance
  * animation + ground physics) and tear down. The animal-specific AI lives in a
@@ -27,6 +38,8 @@ export abstract class Companion {
   // load-created field (mesh/animator + the subclass fields set in onLoaded) exists. Guards
   // destroy() against a teardown that races a still-pending model load.
   protected loaded = false;
+  /** Injected server-driven movement (network mode); null = run the local updateBehavior brain. */
+  protected movement: CompanionMovement | null = null;
   physics: CompanionPhysics;
   locomotion: CompanionLocomotion;
   // Movement tuning copied from the definition so behavior code reads this.speed
@@ -120,14 +133,22 @@ export abstract class Companion {
     }
   }
 
+  /** Inject (or clear) a server-driven movement controller. While set, it replaces the local
+   *  updateBehavior brain (multiplayer). Pass null to restore local behavior (single-player). */
+  setMovement(movement: CompanionMovement | null): void {
+    this.movement = movement;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update(deltaTime: number, droppedItems: any[] = []): void {
     if (!this.mesh || !this.player?.mesh) return;
 
-    // Advance animation + ground physics, then run the animal-specific brain.
+    // Advance animation + ground physics, then drive behavior. In network mode an injected
+    // movement controller renders the server-authoritative dog; otherwise the local brain runs.
     this.animator.update(deltaTime);
     this.physics.update(this.mesh, deltaTime);
-    this.updateBehavior(deltaTime, droppedItems);
+    if (this.movement) this.movement.update(this, deltaTime);
+    else this.updateBehavior(deltaTime, droppedItems);
   }
 
   destroy(): void {

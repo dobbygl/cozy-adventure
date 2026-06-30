@@ -29,6 +29,13 @@ export interface AvatarStateInput {
   heldItemId: string | null;
 }
 
+/** The owner's server-authoritative dog state (network mode); see DogStateMessage. */
+export interface DogStateInput {
+  position: Vec3;
+  target: Vec3 | null;
+  carrying: number;
+}
+
 export interface NetworkHandlers {
   onPeerJoined?(peer: PeerInfo): void;
   onPeerLeft?(playerId: string): void;
@@ -38,6 +45,8 @@ export interface NetworkHandlers {
   onCommandRejected?(seq: number, reason: RejectReason): void;
   onWorldTime?(clock: WorldClockState): void;
   onInventoryDelta?(itemId: string, delta: number): void;
+  /** Server-authoritative state of our own companion dog (network mode). */
+  onDogState?(state: DogStateInput): void;
   onError?(code: ErrorCode, message: string): void;
   onKick?(reason: KickReason): void;
   onClose?(): void;
@@ -228,6 +237,9 @@ export class NetworkSystem {
         break;
       case 'inventory_delta':
         this.handlers.onInventoryDelta?.(msg.itemId, msg.delta);
+        break;
+      case 'dog_state':
+        this.handlers.onDogState?.({ position: msg.position, target: msg.target, carrying: msg.carrying });
         break;
       case 'error':
         this.handlers.onError?.(msg.code, msg.message);

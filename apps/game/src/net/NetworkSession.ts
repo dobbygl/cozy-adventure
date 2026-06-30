@@ -3,6 +3,7 @@ import {
   type NetworkConfig,
   type NetworkHandlers,
   type AvatarStateInput,
+  type DogStateInput,
   type JoinResult,
 } from './NetworkSystem.js';
 import { RemotePlayerManager, type RemotePlayerFactory, type RemoteAction } from './RemotePlayerManager.js';
@@ -32,6 +33,8 @@ export interface NetworkSessionHandlers {
   onWorldTime?(clock: WorldClockState): void;
   /** A server-authoritative change to our own inventory (chop/pickup/drop). */
   onInventoryDelta?(itemId: string, delta: number): void;
+  /** Server-authoritative state of our own companion dog (network mode). */
+  onDogState?(state: DogStateInput): void;
   onError?(code: ErrorCode, message: string): void;
   onKick?(reason: KickReason): void;
   onClose?(): void;
@@ -94,6 +97,7 @@ export class NetworkSession {
       onCommandRejected: (seq, reason) => h.onCommandRejected?.(seq, reason),
       onWorldTime: (clock) => h.onWorldTime?.(clock),
       onInventoryDelta: (itemId, delta) => h.onInventoryDelta?.(itemId, delta),
+      onDogState: (state) => h.onDogState?.(state),
       onError: (code, message) => h.onError?.(code, message),
       onKick: (reason) => h.onKick?.(reason),
       onClose: () => h.onClose?.(),
